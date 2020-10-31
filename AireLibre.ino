@@ -138,7 +138,7 @@ void setup()
 
   // Initialize OTA
   initOta();
-  
+
   // Configure ntp client
   configTime(timezone * 3600, dst * 3600, "pool.ntp.org", "time.nist.gov");
 
@@ -152,6 +152,7 @@ void setup()
   Serial.println("Ready");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+
 }
 
 /**
@@ -162,6 +163,16 @@ void loop()
   if (WiFi.status() == WL_CONNECTED)
   {
     ArduinoOTA.handle();
+  }
+  else
+  {
+    Serial.println("WiFi was disconnected, reconnecting...");
+    if (initWifi())
+    {
+      Serial.println("WiFi connected");
+    } else {
+      Serial.println("WiFi FAILED");
+    }
   }
 
   updatePmsReadings();
@@ -241,7 +252,7 @@ void updatePmsReadings()
 
       // Report the new values
       reportToHttp();
-      reportToSerial();
+      //reportToSerial();
 
       g_pms_state_start = time_now;
       g_pms_state = PMS_STATE_ASLEEP;
@@ -256,6 +267,7 @@ void reportToHttp()
 {
   char measurements[150];
   char recorded[27];
+  char source[10];
   sprintf(recorded,
           recorded_template,
           timeinfo->tm_year + 1900,
@@ -264,9 +276,10 @@ void reportToHttp()
           timeinfo->tm_hour,
           timeinfo->tm_min,
           timeinfo->tm_sec);
+  sprintf(source, "%x", g_device_id);
   sprintf(measurements, http_data_template, sensor, source, g_pm1p0_ae_value, g_pm2p5_ae_value, g_pm10p0_ae_value, longitude, latitude, recorded);
   //Serial.println(measurements);
-  
+
   http.addHeader("x-api-key", api_key);
   http.addHeader("Content-Type", "application/json");
   //http.setFingerprint(fingerprint);
@@ -344,7 +357,7 @@ void reportToSerial()
 */
 void initOta()
 {
-// Setup OTA
+  // Setup OTA
   ArduinoOTA.onStart([]() {
     String type;
     if (ArduinoOTA.getCommand() == U_FLASH) {
@@ -390,6 +403,7 @@ bool initWifi()
     WiFi.disconnect();
   }
   WiFi.setAutoConnect(false);
+  WiFi.setAutoReconnect(true);
 
   // RETURN: No SSID, so no wifi!
   if (sizeof(ssid) == 1)

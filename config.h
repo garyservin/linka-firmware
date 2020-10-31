@@ -16,7 +16,6 @@ const char* api_url               = "http://test.com";
 const char* api_key               = ""; // API Key for server
 const char* latitude              = "";
 const char* longitude             = "";
-const char* source                = "test";
 
 /* ----------------- Hardware-specific config ---------------------- */
 #define     ESP_WAKEUP_PIN          D0               // To reset ESP8266 after deep sleep

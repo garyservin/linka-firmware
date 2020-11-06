@@ -6,7 +6,7 @@
   server
 
   Written by Linka Gonzalez
-    https://github.com//
+    https://github.com/garyservin/linka-firmware
 
   Inspired by https://github.com/superhouse/AirQualitySensorD1Mini
 
@@ -20,12 +20,12 @@
 /*--------------------------- Libraries ----------------------------------*/
 #include <Wire.h>                     // For I2C
 #include <SoftwareSerial.h>           // Allows PMS to avoid the USB serial port
+#include <WiFiConnect.h>              // Allow configuring WiFi via captive portal
 #include <ESP8266WiFi.h>              // ESP8266 WiFi driver
 #include <ESP8266HTTPClient.h>        // HTTP Client
 #include <ArduinoOTA.h>               // Allow local OTA programming
 #include <time.h>                     // To get current time
 #include "PMS.h"                      // Particulate Matter Sensor driver (embedded)
-#include <WiFiClientSecureBearSSL.h>
 
 /*--------------------------- Global Variables ---------------------------*/
 // Particulate matter sensor
@@ -65,10 +65,6 @@ char http_data_template[] = "[{"
                             "\"recorded\":\"%s\""
                             "}]";
 
-// Wifi
-#define WIFI_CONNECT_INTERVAL           500  // Wait 500ms intervals for wifi connection
-#define WIFI_CONNECT_MAX_ATTEMPTS        10  // Number of attempts/intervals to wait
-
 // General
 uint32_t g_device_id;                    // Unique ID from ESP chip ID
 
@@ -93,12 +89,18 @@ SoftwareSerial pmsSerial(PMS_RX_PIN, PMS_TX_PIN); // Rx pin = GPIO2 (D4 on Wemos
 PMS pms(pmsSerial, false);           // Use the software serial port for the PMS
 PMS::DATA g_data;
 
-// HTTP Client
-//WiFiClientSecure client;
+// Start HTTP client
 WiFiClient client;
 HTTPClient http;
 
+// WifiManager
+WiFiConnect wc;
+
 /*--------------------------- Program ------------------------------------*/
+void configModeCallback(WiFiConnect *mWiFiConnect) {
+  Serial.println("Entering Access Point");
+}
+
 /**
   Setup
 */
@@ -120,6 +122,7 @@ void setup()
   Serial.print("Device ID: ");
   Serial.println(g_device_id, HEX);
 
+
   // Connect to WiFi
   Serial.println("Connecting to WiFi");
   if (initWifi())
@@ -128,13 +131,8 @@ void setup()
   } else {
     Serial.println("WiFi FAILED");
   }
-  delay(100);
 
-  // Setup API client
-  //std::unique_ptr<BearSSL::WiFiClientSecure>client(new BearSSL::WiFiClientSecure);
-  //client->setInsecure();
-  //client->setFingerprint(fingerprint);
-  http.begin(client, api_url); //HTTPS
+  delay(100);
 
   // Initialize OTA
   initOta();
@@ -166,12 +164,9 @@ void loop()
   }
   else
   {
-    Serial.println("WiFi was disconnected, reconnecting...");
-    if (initWifi())
-    {
-      Serial.println("WiFi connected");
-    } else {
-      Serial.println("WiFi FAILED");
+    // Wifi Dies? Start Portal Again
+    if (WiFi.status() != WL_CONNECTED) {
+      if (!wc.autoConnect()) wc.startConfigurationPortal(AP_WAIT);
     }
   }
 
@@ -268,6 +263,7 @@ void reportToHttp()
   char measurements[150];
   char recorded[27];
   char source[10];
+
   sprintf(recorded,
           recorded_template,
           timeinfo->tm_year + 1900,
@@ -278,30 +274,36 @@ void reportToHttp()
           timeinfo->tm_sec);
   sprintf(source, "%x", g_device_id);
   sprintf(measurements, http_data_template, sensor, source, g_pm1p0_ae_value, g_pm2p5_ae_value, g_pm10p0_ae_value, longitude, latitude, recorded);
-  //Serial.println(measurements);
+  Serial.println(measurements);
 
-  http.addHeader("x-api-key", api_key);
-  http.addHeader("Content-Type", "application/json");
-  //http.setFingerprint(fingerprint);
-  int httpCode = http.POST(measurements);
+  // Start http client
+  if (http.begin(client, api_url)) {
 
-  // httpCode will be negative on error
-  if (httpCode > 0) {
-    // HTTP header has been send and Server response header has been handled
-    Serial.printf("[HTTP] POST... code: %d\n", httpCode);
+    // Add headers
+    http.addHeader("x-api-key", api_key);
+    http.addHeader("Content-Type", "application/json");
+    int httpCode = http.POST(measurements);
 
-    // file found at server
-    if (httpCode == HTTP_CODE_OK) {
-      const String& payload = http.getString();
-      Serial.println("received payload:\n<<");
-      Serial.println(payload);
-      Serial.println(">>");
+    // httpCode will be negative on error
+    if (httpCode > 0) {
+      // HTTP header has been sent and Server response header has been handled
+      Serial.printf("[HTTP] POST... code: %d\n", httpCode);
+
+      // file found at server
+      //if (httpCode == HTTP_CODE_OK) {
+      //  const String& payload = http.getString();
+      //  Serial.println("received payload:\n<<");
+      //  Serial.println(payload);
+      //  Serial.println(">>");
+      //}
+    } else {
+      Serial.printf("[HTTP] POST... failed, error: %s\n", http.errorToString(httpCode).c_str());
     }
-  } else {
-    Serial.printf("[HTTP] POST... failed, error: %s\n", http.errorToString(httpCode).c_str());
+    http.end();
   }
-
-  http.end();
+  else {
+    Serial.printf("[HTTP] Unable to connect");
+  }
 }
 
 /**
@@ -397,35 +399,22 @@ void initOta()
 */
 bool initWifi()
 {
-  // Clean up any old auto-connections
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    WiFi.disconnect();
-  }
-  WiFi.setAutoConnect(false);
-  WiFi.setAutoReconnect(true);
+  // Let WiFi Manager handle connections
+  wc.setDebug(true);
 
-  // RETURN: No SSID, so no wifi!
-  if (sizeof(ssid) == 1)
-  {
-    return false;
-  }
+  /* Set our callbacks */
+  wc.setAPCallback(configModeCallback);
 
-  // Connect to wifi
-  WiFi.begin(ssid, password);
+  //wc.resetSettings(); //helper to remove the stored wifi connection, comment out after first upload and re upload
 
-  // Wait for connection set amount of intervals
-  int num_attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && num_attempts <= WIFI_CONNECT_MAX_ATTEMPTS)
-  {
-    delay(WIFI_CONNECT_INTERVAL);
-    num_attempts++;
-  }
-
-  if (WiFi.status() != WL_CONNECTED)
-  {
-    return false;
-  } else {
-    return true;
+  /*
+     AP_NONE = Continue executing code
+     AP_LOOP = Trap in a continuous loop - Device is useless
+     AP_RESET = Restart the chip
+     AP_WAIT  = Trap in a continuous loop with captive portal until we have a working WiFi connection
+  */
+  if (!wc.autoConnect()) { // try to connect to wifi
+    /* We could also use button etc. to trigger the portal on demand within main loop */
+    wc.startConfigurationPortal(AP_WAIT);//if not connected show the configuration portal
   }
 }

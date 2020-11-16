@@ -95,6 +95,10 @@ HTTPClient http;
 
 // WifiManager
 WiFiConnect wc;
+WiFiConnectParam api_key_param("api_key", "API Key", "", 33);
+WiFiConnectParam latitude_param("latitude", "Latitude", "", 12);
+WiFiConnectParam longitude_param("longitude", "Longitude", "", 12);
+WiFiConnectParam sensor_param("sensor", "Sensor model", "", 8);
 
 /*--------------------------- Program ------------------------------------*/
 void configModeCallback(WiFiConnect *mWiFiConnect) {
@@ -121,7 +125,6 @@ void setup()
   g_device_id = ESP.getChipId();  // Get the unique ID of the ESP8266 chip
   Serial.print("Device ID: ");
   Serial.println(g_device_id, HEX);
-
 
   // Connect to WiFi
   Serial.println("Connecting to WiFi");
@@ -167,6 +170,10 @@ void loop()
     // Wifi Dies? Start Portal Again
     if (WiFi.status() != WL_CONNECTED) {
       if (!wc.autoConnect()) wc.startConfigurationPortal(AP_WAIT);
+      strcpy(api_key, api_key_param.getValue());
+      strcpy(latitude, latitude_param.getValue());
+      strcpy(longitude, longitude_param.getValue());
+      strcpy(sensor, sensor_param.getValue());
     }
   }
 
@@ -273,7 +280,7 @@ void reportToHttp()
           timeinfo->tm_min,
           timeinfo->tm_sec);
   sprintf(source, "%x", g_device_id);
-  sprintf(measurements, http_data_template, sensor, source, g_pm1p0_ae_value, g_pm2p5_ae_value, g_pm10p0_ae_value, longitude, latitude, recorded);
+  sprintf(measurements, http_data_template, sensor, source, g_pm1p0_sp_value, g_pm2p5_sp_value, g_pm10p0_sp_value, longitude, latitude, recorded);
   Serial.println(measurements);
 
   // Start http client
@@ -315,15 +322,21 @@ void reportToSerial()
   {
     /* Report PM1.0 AE value */
     Serial.print("PM1:");
-    Serial.println(String(g_pm1p0_ae_value));
+    Serial.print(String(g_pm1p0_ae_value));
+    Serial.print(" | SP:");
+    Serial.println(String(g_pm1p0_sp_value));
 
     /* Report PM2.5 AE value */
     Serial.print("PM2.5:");
-    Serial.println(String(g_pm2p5_ae_value));
+    Serial.print(String(g_pm2p5_ae_value));
+    Serial.print(" | SP:");
+    Serial.println(String(g_pm2p5_sp_value));
 
     /* Report PM10.0 AE value */
     Serial.print("PM10:");
-    Serial.println(String(g_pm10p0_ae_value));
+    Serial.print(String(g_pm10p0_ae_value));
+    Serial.print(" | SP:");
+    Serial.println(String(g_pm10p0_sp_value));
   }
 
   if (true == g_pms_ppd_readings_taken)
@@ -404,6 +417,23 @@ bool initWifi()
 
   /* Set our callbacks */
   wc.setAPCallback(configModeCallback);
+
+  // Set how many connection attempts before we fail and go to captive portal mode
+  wc.setRetryAttempts(5);
+
+  // How long to wait in captive portal mode before we try to reconnect
+  wc.setAPModeTimeoutMins(5);
+
+  // Set Access Point name for captive portal mode
+  char ap_name[13];
+  sprintf(ap_name, "linka-%x", g_device_id);
+  wc.setAPName(ap_name);
+
+  // Configure custom parameters
+  wc.addParameter(&api_key_param);
+  wc.addParameter(&latitude_param);
+  wc.addParameter(&longitude_param);
+  wc.addParameter(&sensor_param);
 
   //wc.resetSettings(); //helper to remove the stored wifi connection, comment out after first upload and re upload
 

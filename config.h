@@ -1,17 +1,17 @@
 /* ----------------- General config -------------------------------- */
 /* Particulate Matter Sensor */
-uint32_t    g_pms_warmup_period   = 30;               // Seconds to warm up PMS before reading
-uint32_t    g_pms_report_period   = 120;              // Seconds between reports
-const char* sensor                = "PMS7003";        // Sensor model
+uint32_t    g_pms_warmup_period     = 30;               // Seconds to warm up PMS before reading
+uint32_t    g_pms_report_period     = 120;              // Seconds between reports
+char sensor[8]                      = "PMS7003";
 
 /* Serial */
 #define     SERIAL_BAUD_RATE    115200                // Speed for USB serial console
 
 /* HTTP Client */
-const char* api_url               = "http://test.com";
-const char* api_key               = ""; // API Key for server
-const char* latitude              = "";
-const char* longitude             = "";
+const char* api_url                 = "http://rald-dev.greenbeep.com/api/v1/measurements";
+char api_key[33]                    = "a54f894e6ba82a4ecd16fb279b89eae7"; // Random generated one
+char latitude[12]                   = "-23.4425";
+char longitude[12]                  = "-58.4438";
 
 /* ----------------- Hardware-specific config ---------------------- */
 #define     ESP_WAKEUP_PIN          D0               // To reset ESP8266 after deep sleep

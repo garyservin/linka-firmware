@@ -9,9 +9,9 @@ char sensor[8]                      = "PMS7003";
 
 /* HTTP Client */
 const char* api_url                 = "http://rald-dev.greenbeep.com/api/v1/measurements";
-char api_key[33]                    = "a54f894e6ba82a4ecd16fb279b89eae7"; // Random generated one
-char latitude[12]                   = "-23.4425";
-char longitude[12]                  = "-58.4438";
+char api_key[33]                    = ""; // Random generated one
+char latitude[12]                   = "";
+char longitude[12]                  = "";
 
 /* ----------------- Hardware-specific config ---------------------- */
 #define     ESP_WAKEUP_PIN          D0               // To reset ESP8266 after deep sleep

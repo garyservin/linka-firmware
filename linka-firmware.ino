@@ -13,6 +13,7 @@
   Copyright 2020 Linka Gonzalez
 */
 #define VERSION "0.1"
+#include <FS.h>                   //this needs to be first, or it all crashes and burns...
 /*--------------------------- Configuration ------------------------------*/
 // Configuration should be done in the included file:
 #include "config.h"
@@ -26,6 +27,7 @@
 #include <ArduinoOTA.h>               // Allow local OTA programming
 #include <time.h>                     // To get current time
 #include "PMS.h"                      // Particulate Matter Sensor driver (embedded)
+#include <ArduinoJson.h>              // https://github.com/bblanchon/ArduinoJson
 
 /*--------------------------- Global Variables ---------------------------*/
 // Particulate matter sensor
@@ -73,12 +75,12 @@ int dst = 0;
 time_t now;
 struct tm * timeinfo;
 
-
 char recorded_template[] = "%d-%02d-%02dT%02d:%02d:%02d.000Z";
 
 /*--------------------------- Function Signatures ------------------------*/
 void initOta();
 bool initWifi();
+void initFS();
 void updatePmsReadings();
 
 /*--------------------------- Instantiate Global Objects -----------------*/
@@ -99,11 +101,21 @@ WiFiConnectParam api_key_param("api_key", "API Key", "", 33);
 WiFiConnectParam latitude_param("latitude", "Latitude", "", 12);
 WiFiConnectParam longitude_param("longitude", "Longitude", "", 12);
 WiFiConnectParam sensor_param("sensor", "Sensor model", "", 8);
+//flag for saving data
+bool shouldSaveConfig = false;
+bool shouldReadConfig = true;
 
 /*--------------------------- Program ------------------------------------*/
 void configModeCallback(WiFiConnect *mWiFiConnect) {
   Serial.println("Entering Access Point");
 }
+
+//callback notifying us of the need to save config
+void saveConfigCallback () {
+  Serial.println("Should save config");
+  shouldSaveConfig = true;
+}
+
 
 /**
   Setup
@@ -125,6 +137,8 @@ void setup()
   g_device_id = ESP.getChipId();  // Get the unique ID of the ESP8266 chip
   Serial.print("Device ID: ");
   Serial.println(g_device_id, HEX);
+
+  initFS();
 
   // Connect to WiFi
   Serial.println("Connecting to WiFi");
@@ -170,10 +184,7 @@ void loop()
     // Wifi Dies? Start Portal Again
     if (WiFi.status() != WL_CONNECTED) {
       if (!wc.autoConnect()) wc.startConfigurationPortal(AP_WAIT);
-      strcpy(api_key, api_key_param.getValue());
-      strcpy(latitude, latitude_param.getValue());
-      strcpy(longitude, longitude_param.getValue());
-      strcpy(sensor, sensor_param.getValue());
+
     }
   }
 
@@ -429,6 +440,9 @@ bool initWifi()
   sprintf(ap_name, "linka-%x", g_device_id);
   wc.setAPName(ap_name);
 
+  //set config save notify callback
+  wc.setSaveConfigCallback(saveConfigCallback);
+
   // Configure custom parameters
   wc.addParameter(&api_key_param);
   wc.addParameter(&latitude_param);
@@ -446,5 +460,85 @@ bool initWifi()
   if (!wc.autoConnect()) { // try to connect to wifi
     /* We could also use button etc. to trigger the portal on demand within main loop */
     wc.startConfigurationPortal(AP_WAIT);//if not connected show the configuration portal
+  }
+
+  if (shouldReadConfig) {
+    strcpy(api_key, api_key_param.getValue());
+    strcpy(latitude, latitude_param.getValue());
+    strcpy(longitude, longitude_param.getValue());
+    strcpy(sensor, sensor_param.getValue());
+  }
+
+  Serial.println("Using the following parameters:");
+  Serial.print("API-key: ");
+  Serial.println(api_key);
+  Serial.print("Latitude: ");
+  Serial.println(latitude);
+  Serial.print("Longitude: ");
+  Serial.println(longitude);
+  Serial.print("Sensor: ");
+  Serial.println(sensor);
+
+  if (shouldSaveConfig) {
+    Serial.println("Saving config");
+    DynamicJsonBuffer jsonBuffer;
+    JsonObject& json = jsonBuffer.createObject();
+    json["api_key"] = api_key;
+    json["latitude"] = latitude;
+    json["longitude"] = longitude;
+    json["sensor"] = sensor;
+
+    File configFile = SPIFFS.open("/config.json", "w");
+    if (!configFile) {
+      Serial.println("failed to open config file for writing");
+    }
+
+    json.printTo(Serial);
+    json.printTo(configFile);
+    configFile.close();
+  }
+}
+
+void initFS(void)
+{
+  //clean FS, for testing
+  //SPIFFS.format();
+
+  //read configuration from FS json
+  Serial.println("mounting FS...");
+
+  if (SPIFFS.begin()) {
+    Serial.println("mounted file system");
+    if (SPIFFS.exists("/config.json")) {
+      //file exists, reading and loading
+      Serial.println("reading config file");
+      File configFile = SPIFFS.open("/config.json", "r");
+      if (configFile) {
+        Serial.println("opened config file");
+        size_t size = configFile.size();
+        // Allocate a buffer to store contents of the file.
+        std::unique_ptr<char[]> buf(new char[size]);
+
+        configFile.readBytes(buf.get(), size);
+        DynamicJsonBuffer jsonBuffer;
+        JsonObject& json = jsonBuffer.parseObject(buf.get());
+        json.printTo(Serial);
+        if (json.success()) {
+          Serial.println("\nparsed json");
+
+          strcpy(api_key, json["api_key"]);
+          strcpy(latitude, json["latitude"]);
+          strcpy(longitude, json["longitude"]);
+          strcpy(sensor, json["sensor"]);
+          shouldReadConfig = false;
+
+        } else {
+          Serial.println("failed to load json config");
+        }
+        configFile.close();
+      }
+    }
+  } else {
+    Serial.println("failed to mount FS");
   }
 }

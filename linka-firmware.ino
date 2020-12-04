@@ -142,14 +142,13 @@ void setup()
 
   initFS();
 
-  // Connect to WiFi
-  Serial.println("Connecting to WiFi");
-  if (initWifi())
-  {
-    Serial.println("WiFi connected");
-  } else {
-    Serial.println("WiFi FAILED");
-  }
+  // Wait before we attempt to connect to Wifi
+  // In the case of a power outage, wifi might take a while to be ready, we don't want
+  // the sensor to go to captive portal mode too quickly.
+  // TODO(gservin): Find a way to only wait if there's already a WiFi config stored
+  Serial.println("Waiting to let wifi start...");
+  delay(60 * 1000); // wait roughly 60 seconds
+  initWifi();
 
   delay(100);
 

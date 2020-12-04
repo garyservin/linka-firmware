@@ -63,8 +63,8 @@ char http_data_template[] = "[{"
                             "\"pm1dot0\": %d,"
                             "\"pm2dot5\": %d,"
                             "\"pm10\": %d,"
-                            "\"longitude\": \"%s\","
-                            "\"latitude\": \"%s\","
+                            "\"longitude\": %s,"
+                            "\"latitude\": %s,"
                             "\"recorded\": \"%s\""
                             "}]";
 

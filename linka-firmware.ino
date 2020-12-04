@@ -59,12 +59,13 @@ uint32_t  g_pm10p0_ppd_value    = 0;  // Particles Per Deciliter pm10.0 reading
 char http_data_template[] = "[{"
                             "\"sensor\": \"%s\","
                             "\"source\": \"%s\","
+                            "\"description\": \"%s\","
                             "\"pm1dot0\": %d,"
                             "\"pm2dot5\": %d,"
                             "\"pm10\": %d,"
-                            "\"longitude\": %s,"
-                            "\"latitude\": %s,"
-                            "\"recorded\":\"%s\""
+                            "\"longitude\": \"%s\","
+                            "\"latitude\": \"%s\","
+                            "\"recorded\": \"%s\""
                             "}]";
 
 // General
@@ -100,7 +101,8 @@ WiFiConnect wc;
 WiFiConnectParam api_key_param("api_key", "API Key", "", 33);
 WiFiConnectParam latitude_param("latitude", "Latitude", "", 12);
 WiFiConnectParam longitude_param("longitude", "Longitude", "", 12);
-WiFiConnectParam sensor_param("sensor", "Sensor model", "", 8);
+WiFiConnectParam sensor_param("sensor", "Sensor model", "PMS7003", 8);
+WiFiConnectParam description_param("description", "Desciption", "", 8);
 //flag for saving data
 bool shouldSaveConfig = false;
 bool shouldReadConfig = true;
@@ -278,7 +280,7 @@ void updatePmsReadings()
 */
 void reportToHttp()
 {
-  char measurements[150];
+  char measurements[256];
   char recorded[27];
   char source[10];
 
@@ -291,10 +293,19 @@ void reportToHttp()
           timeinfo->tm_min,
           timeinfo->tm_sec);
   sprintf(source, "%x", g_device_id);
-  sprintf(measurements, http_data_template, sensor, source, g_pm1p0_sp_value, g_pm2p5_sp_value, g_pm10p0_sp_value, longitude, latitude, recorded);
+  sprintf(measurements,
+          http_data_template,
+          sensor,
+          source,
+          description,
+          g_pm1p0_sp_value,
+          g_pm2p5_sp_value,
+          g_pm10p0_sp_value,
+          longitude,
+          latitude,
+          recorded);
   Serial.println(measurements);
 
-  // Start http client
   if (http.begin(client, api_url)) {
 
     // Add headers
@@ -306,14 +317,6 @@ void reportToHttp()
     if (httpCode > 0) {
       // HTTP header has been sent and Server response header has been handled
       Serial.printf("[HTTP] POST... code: %d\n", httpCode);
-
-      // file found at server
-      //if (httpCode == HTTP_CODE_OK) {
-      //  const String& payload = http.getString();
-      //  Serial.println("received payload:\n<<");
-      //  Serial.println(payload);
-      //  Serial.println(">>");
-      //}
     } else {
       Serial.printf("[HTTP] POST... failed, error: %s\n", http.errorToString(httpCode).c_str());
     }
@@ -448,6 +451,7 @@ bool initWifi()
   wc.addParameter(&latitude_param);
   wc.addParameter(&longitude_param);
   wc.addParameter(&sensor_param);
+  wc.addParameter(&description_param);
 
   //wc.resetSettings(); //helper to remove the stored wifi connection, comment out after first upload and re upload
 
@@ -459,7 +463,7 @@ bool initWifi()
   */
   if (!wc.autoConnect()) { // try to connect to wifi
     /* We could also use button etc. to trigger the portal on demand within main loop */
-    wc.startConfigurationPortal(AP_WAIT);//if not connected show the configuration portal
+    wc.startConfigurationPortal(AP_WAIT); //if not connected show the configuration portal
   }
 
   if (shouldReadConfig) {
@@ -467,6 +471,7 @@ bool initWifi()
     strcpy(latitude, latitude_param.getValue());
     strcpy(longitude, longitude_param.getValue());
     strcpy(sensor, sensor_param.getValue());
+    strcpy(description, description_param.getValue());
   }
 
   Serial.println("Using the following parameters:");
@@ -478,6 +483,8 @@ bool initWifi()
   Serial.println(longitude);
   Serial.print("Sensor: ");
   Serial.println(sensor);
+  Serial.print("Description: ");
+  Serial.println(description);
 
   if (shouldSaveConfig) {
     Serial.println("Saving config");
@@ -487,6 +494,7 @@ bool initWifi()
     json["latitude"] = latitude;
     json["longitude"] = longitude;
     json["sensor"] = sensor;
+    json["description"] = description;
 
     File configFile = SPIFFS.open("/config.json", "w");
     if (!configFile) {
@@ -530,6 +538,7 @@ void initFS(void)
           strcpy(latitude, json["latitude"]);
           strcpy(longitude, json["longitude"]);
           strcpy(sensor, json["sensor"]);
+          strcpy(description, json["description"]);
           shouldReadConfig = false;
 
         } else {

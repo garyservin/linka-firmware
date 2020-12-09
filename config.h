@@ -7,13 +7,6 @@ char sensor[8]                      = "PMS7003";
 /* Serial */
 #define     SERIAL_BAUD_RATE    115200                // Speed for USB serial console
 
-/* HTTP Client */
-const char* api_url                 = "http://rald-dev.greenbeep.com/api/v1/measurements";
-char api_key[33]                    = "";
-char latitude[12]                   = "";
-char longitude[12]                  = "";
-char description[21]                = "";
-
 /* ----------------- Hardware-specific config ---------------------- */
 #define     ESP_WAKEUP_PIN          D0               // To reset ESP8266 after deep sleep
 #define     PMS_RX_PIN              D4               // Rx from PMS (== PMS Tx)

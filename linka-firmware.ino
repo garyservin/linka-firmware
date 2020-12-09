@@ -12,8 +12,8 @@
 
   Copyright 2020 Linka Gonzalez
 */
-#define VERSION "0.1"
-#include <FS.h>                   //this needs to be first, or it all crashes and burns...
+#define VERSION "0.2"
+#include <FS.h>                   // This needs to be first, or it all crashes and burns...
 /*--------------------------- Configuration ------------------------------*/
 // Configuration should be done in the included file:
 #include "config.h"
@@ -77,6 +77,7 @@ time_t now;
 struct tm * timeinfo;
 
 char recorded_template[] = "%d-%02d-%02dT%02d:%02d:%02d.000Z";
+bool force_captive_portal = false;
 
 /*--------------------------- Function Signatures ------------------------*/
 void initOta();
@@ -99,28 +100,36 @@ HTTPClient http;
 // WifiManager
 WiFiConnect wc;
 WiFiConnectParam api_key_param("api_key", "API Key", "", 33);
-WiFiConnectParam latitude_param("latitude", "Latitude", "", 12);
-WiFiConnectParam longitude_param("longitude", "Longitude", "", 12);
+WiFiConnectParam latitude_param("latitude", "Latitude", "", 13);
+WiFiConnectParam longitude_param("longitude", "Longitude", "", 13);
 WiFiConnectParam sensor_param("sensor", "Sensor model", "PMS7003", 8);
-WiFiConnectParam description_param("description", "Desciption", "", 8);
-//flag for saving data
+WiFiConnectParam description_param("description", "Desciption", "", 21);
+WiFiConnectParam api_url_param("api_url", "URL for the backend", "http://rald-dev.greenbeep.com/api/v1/measurements", 71);
+
+// vars to store parameters
+char api_key[33] = "";
+char latitude[12] = "";
+char longitude[12] = "";
+char description[21] = "";
+char api_url[71] = "";
+
+// flag for saving data
 bool shouldSaveConfig = false;
-bool shouldReadConfig = true;
 
 /*--------------------------- Program ------------------------------------*/
 void configModeCallback(WiFiConnect *mWiFiConnect) {
   Serial.println("Entering Access Point");
 }
 
-//callback notifying us of the need to save config
+/*
+    Callback notifying us of the need to save config
+*/
 void saveConfigCallback () {
-  Serial.println("Should save config");
   shouldSaveConfig = true;
 }
 
-
-/**
-  Setup
+/*
+   Setup
 */
 void setup()
 {
@@ -150,6 +159,20 @@ void setup()
   delay(60 * 1000); // wait roughly 60 seconds
   initWifi();
 
+  Serial.println("\nUsing the following parameters:");
+  Serial.print("API URL: ");
+  Serial.println(api_url);
+  Serial.print("API-key: ");
+  Serial.println(api_key);
+  Serial.print("Latitude: ");
+  Serial.println(latitude);
+  Serial.print("Longitude: ");
+  Serial.println(longitude);
+  Serial.print("Sensor: ");
+  Serial.println(sensor);
+  Serial.print("Description: ");
+  Serial.println(description);
+
   delay(100);
 
   // Initialize OTA
@@ -171,7 +194,7 @@ void setup()
 
 }
 
-/**
+/*
   Main loop
 */
 void loop()
@@ -192,7 +215,7 @@ void loop()
   updatePmsReadings();
 }
 
-/**
+/*
   Update particulate matter sensor values
 */
 void updatePmsReadings()
@@ -274,7 +297,7 @@ void updatePmsReadings()
   }
 }
 
-/**
+/*
   Report the latest values to HTTP Server
 */
 void reportToHttp()
@@ -326,7 +349,7 @@ void reportToHttp()
   }
 }
 
-/**
+/*
   Report the latest values to the serial console
 */
 void reportToSerial()
@@ -380,7 +403,7 @@ void reportToSerial()
   }
 }
 
-/**
+/*
   Start OTA
 */
 void initOta()
@@ -420,7 +443,7 @@ void initOta()
   ArduinoOTA.begin();
 }
 
-/**
+/*
   Connect to Wifi. Returns false if it can't connect.
 */
 bool initWifi()
@@ -451,6 +474,7 @@ bool initWifi()
   wc.addParameter(&longitude_param);
   wc.addParameter(&sensor_param);
   wc.addParameter(&description_param);
+  wc.addParameter(&api_url_param);
 
   //wc.resetSettings(); //helper to remove the stored wifi connection, comment out after first upload and re upload
 
@@ -460,40 +484,21 @@ bool initWifi()
      AP_RESET = Restart the chip
      AP_WAIT  = Trap in a continuous loop with captive portal until we have a working WiFi connection
   */
-  if (!wc.autoConnect()) { // try to connect to wifi
+  if (!wc.autoConnect() || force_captive_portal) { // try to connect to wifi
     /* We could also use button etc. to trigger the portal on demand within main loop */
     wc.startConfigurationPortal(AP_WAIT); //if not connected show the configuration portal
   }
 
-  if (shouldReadConfig) {
-    strcpy(api_key, api_key_param.getValue());
-    strcpy(latitude, latitude_param.getValue());
-    strcpy(longitude, longitude_param.getValue());
-    strcpy(sensor, sensor_param.getValue());
-    strcpy(description, description_param.getValue());
-  }
-
-  Serial.println("Using the following parameters:");
-  Serial.print("API-key: ");
-  Serial.println(api_key);
-  Serial.print("Latitude: ");
-  Serial.println(latitude);
-  Serial.print("Longitude: ");
-  Serial.println(longitude);
-  Serial.print("Sensor: ");
-  Serial.println(sensor);
-  Serial.print("Description: ");
-  Serial.println(description);
-
   if (shouldSaveConfig) {
-    Serial.println("Saving config");
+    Serial.println("Saving configurations to filesystem");
     DynamicJsonBuffer jsonBuffer;
     JsonObject& json = jsonBuffer.createObject();
-    json["api_key"] = api_key;
-    json["latitude"] = latitude;
-    json["longitude"] = longitude;
-    json["sensor"] = sensor;
-    json["description"] = description;
+    json["api_key"] = api_key_param.getValue();
+    json["latitude"] = latitude_param.getValue();
+    json["longitude"] = longitude_param.getValue();
+    json["sensor"] = sensor_param.getValue();
+    json["description"] = description_param.getValue();
+    json["api_url"] = api_url_param.getValue();
 
     File configFile = SPIFFS.open("/config.json", "w");
     if (!configFile) {
@@ -502,10 +507,21 @@ bool initWifi()
 
     json.printTo(Serial);
     json.printTo(configFile);
+
+    strcpy(api_key, json["api_key"]);
+    strcpy(latitude, json["latitude"]);
+    strcpy(longitude, json["longitude"]);
+    strcpy(sensor, json["sensor"]);
+    strcpy(description, json["description"]);
+    strcpy(api_url, json["api_url"]);
+
     configFile.close();
   }
 }
 
+/*
+   Init filesystem to store parameters
+*/
 void initFS(void)
 {
   //clean FS, for testing
@@ -531,14 +547,17 @@ void initFS(void)
         JsonObject& json = jsonBuffer.parseObject(buf.get());
         json.printTo(Serial);
         if (json.success()) {
-          Serial.println("\nparsed json");
 
           strcpy(api_key, json["api_key"]);
           strcpy(latitude, json["latitude"]);
           strcpy(longitude, json["longitude"]);
           strcpy(sensor, json["sensor"]);
           strcpy(description, json["description"]);
-          shouldReadConfig = false;
+          strcpy(api_url, json["api_url"]);
+          if (strcmp(api_key, "") == 0) {
+            Serial.println("Stored parameters are empty, reset the parameters");
+            force_captive_portal = true;
+          }
 
         } else {
           Serial.println("failed to load json config");

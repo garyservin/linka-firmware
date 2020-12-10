@@ -103,7 +103,7 @@ WiFiConnectParam api_key_param("api_key", "API Key", "", 33);
 WiFiConnectParam latitude_param("latitude", "Latitude", "", 13);
 WiFiConnectParam longitude_param("longitude", "Longitude", "", 13);
 WiFiConnectParam sensor_param("sensor", "Sensor model", "PMS7003", 8);
-WiFiConnectParam description_param("description", "Desciption", "", 21);
+WiFiConnectParam description_param("description", "Description", "", 21);
 WiFiConnectParam api_url_param("api_url", "URL for the backend", "http://rald-dev.greenbeep.com/api/v1/measurements", 71);
 
 // vars to store parameters

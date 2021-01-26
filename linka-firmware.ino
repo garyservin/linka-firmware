@@ -552,8 +552,12 @@ void initFS(void)
           strcpy(latitude, json["latitude"]);
           strcpy(longitude, json["longitude"]);
           strcpy(sensor, json["sensor"]);
-          strcpy(description, json["description"]);
-          strcpy(api_url, json["api_url"]);
+          if (json.containsKey("description")){
+            strcpy(description, json["description"]);
+          }
+          if (json.containsKey("api_url")){
+            strcpy(api_url, json["api_url"]);
+          }
           if (strcmp(api_key, "") == 0) {
             Serial.println("Stored parameters are empty, reset the parameters");
             force_captive_portal = true;

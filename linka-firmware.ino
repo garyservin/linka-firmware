@@ -14,6 +14,7 @@
 */
 #define VERSION "0.2"
 #include <FS.h>                   // This needs to be first, or it all crashes and burns...
+#include <SPI.h>                   // This needs to be first, or it all crashes and burns...
 /*--------------------------- Configuration ------------------------------*/
 // Configuration should be done in the included file:
 #include "config.h"

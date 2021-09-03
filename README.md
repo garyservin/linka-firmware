@@ -29,7 +29,7 @@ and the code will compile and upload to your connected device (it should be dete
 
 Install [ Arduino IDE ](https://www.arduino.cc/en/software) and...
 
-- Open **File -> Preferences** and copy the following urls on the __"Additional Boards URLs"__ input text
+- Open **File -> Preferences** and copy the following urls on the __"Additional Boards Manager URLs"__ input text
 
 ```
 https://arduino.esp8266.com/stable/package_esp8266com_index.json,https://dl.espressif.com/dl/package_esp32_index.json
@@ -47,13 +47,13 @@ and click on **Ok**
 
 ![Board selection in arduino Tools menu](/doc/img/arduino_ide_board_selection.png)
 
-- Install these libraries by clicking on the 
+- Install these libraries by clicking on the **Tools -> Manage Libraries...**
 
-* WifiConnect Lite
-* Adafruit GFX Library (it should also ask you to install Adafruit BusIO, click on **Install all**)
-* Adafruit SSD1306
-* PubSubClient (by Nick O'Leary)
-* ArduinoJson (important! select a version previous to 6.0.0, 5.13.5 i.e.)
+  * WifiConnect Lite
+  * Adafruit GFX Library (it should also ask you to install Adafruit BusIO, click on **Install all**)
+  * Adafruit SSD1306
+  * PubSubClient (by Nick O'Leary)
+  * ArduinoJson (important! select a version previous to 6.0.0, 5.13.5 i.e.)
 
 - Select the correct port on the **Tools -> Port:** menu
 

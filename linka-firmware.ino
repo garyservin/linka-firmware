@@ -95,7 +95,7 @@ PMS pms(pmsSerial, false);           // Use the software serial port for the PMS
 PMS::DATA g_data;
 
 // Start HTTP client
-WiFiClient client;
+WiFiClientSecure client;
 HTTPClient http;
 
 // WifiManager
@@ -105,7 +105,7 @@ WiFiConnectParam latitude_param("latitude", "Latitude", "", 13);
 WiFiConnectParam longitude_param("longitude", "Longitude", "", 13);
 WiFiConnectParam sensor_param("sensor", "Sensor model", "PMS7003", 8);
 WiFiConnectParam description_param("description", "Description", "", 21);
-WiFiConnectParam api_url_param("api_url", "URL for the backend", "http://rald-dev.greenbeep.com/api/v1/measurements", 71);
+WiFiConnectParam api_url_param("api_url", "URL for the backend", "https://rald-dev.greenbeep.com/api/v1/measurements", 71);
 
 // vars to store parameters
 char api_key[33] = "";
@@ -328,6 +328,8 @@ void reportToHttp()
           latitude,
           recorded);
   Serial.println(measurements);
+
+  client.setInsecure();
 
   if (http.begin(client, api_url)) {
 

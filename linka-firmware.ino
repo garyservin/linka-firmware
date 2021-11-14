@@ -1,9 +1,9 @@
 /**
   Particulate matter sensor firmware for D1 Mini (ESP8266) and PMS5003
 
-  Read from a Plantower PMS5003 particulate matter sensor using a Wemos D1
-  Mini (or other ESP8266-based board) and report the values to an HTTP
-  server
+  Read from a Plantower PMS5003/PMS7003 particulate matter sensor using
+  a Wemos D1 Mini (or other ESP8266-based board) and report the values
+  to an HTTP server
 
   Written by Linka Gonzalez
     https://github.com/garyservin/linka-firmware
@@ -13,6 +13,7 @@
   Copyright 2020 Linka Gonzalez
 */
 #define VERSION "0.2"
+#define USE_LittleFS
 #include <FS.h>                   // This needs to be first, or it all crashes and burns...
 #include <SPI.h>                  // Explicit #include of built-in SPI needed for platformio 
 /*--------------------------- Configuration ------------------------------*/
@@ -29,6 +30,7 @@
 #include <time.h>                     // To get current time
 #include "PMS.h"                      // Particulate Matter Sensor driver (embedded)
 #include <ArduinoJson.h>              // https://github.com/bblanchon/ArduinoJson
+#include <LittleFS.h>
 
 /*--------------------------- Global Variables ---------------------------*/
 // Particulate matter sensor
@@ -82,7 +84,7 @@ bool force_captive_portal = false;
 
 /*--------------------------- Function Signatures ------------------------*/
 void initOta();
-bool initWifi();
+void initWifi();
 void initFS();
 void updatePmsReadings();
 
@@ -449,7 +451,7 @@ void initOta()
 /*
   Connect to Wifi. Returns false if it can't connect.
 */
-bool initWifi()
+void initWifi()
 {
   // Let WiFi Manager handle connections
   wc.setDebug(true);
@@ -503,7 +505,7 @@ bool initWifi()
     json["description"] = description_param.getValue();
     json["api_url"] = api_url_param.getValue();
 
-    File configFile = SPIFFS.open("/config.json", "w");
+    File configFile = LittleFS.open("/config.json", "w");
     if (!configFile) {
       Serial.println("failed to open config file for writing");
     }
@@ -528,17 +530,17 @@ bool initWifi()
 void initFS(void)
 {
   //clean FS, for testing
-  //SPIFFS.format();
+  //LittleFS.format();
 
   //read configuration from FS json
   Serial.println("mounting FS...");
 
-  if (SPIFFS.begin()) {
+  if (LittleFS.begin()) {
     Serial.println("mounted file system");
-    if (SPIFFS.exists("/config.json")) {
+    if (LittleFS.exists("/config.json")) {
       //file exists, reading and loading
       Serial.println("reading config file");
-      File configFile = SPIFFS.open("/config.json", "r");
+      File configFile = LittleFS.open("/config.json", "r");
       if (configFile) {
         Serial.println("opened config file");
         size_t size = configFile.size();

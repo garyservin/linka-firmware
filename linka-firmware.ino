@@ -159,7 +159,6 @@ void setup()
   // the sensor to go to captive portal mode too quickly.
   // TODO(gservin): Find a way to only wait if there's already a WiFi config stored
   Serial.println("Waiting to let wifi start...");
-  delay(60 * 1000); // wait roughly 60 seconds
   initWifi();
 
   Serial.println("\nUsing the following parameters:");
@@ -210,7 +209,7 @@ void loop()
   {
     // Wifi Dies? Start Portal Again
     if (WiFi.status() != WL_CONNECTED) {
-      if (!wc.autoConnect()) wc.startConfigurationPortal(AP_WAIT);
+      if (!wc.autoConnect()) wc.startConfigurationPortal(AP_RESET);
 
     }
   }

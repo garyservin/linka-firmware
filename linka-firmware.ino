@@ -451,8 +451,8 @@ void initOta()
 */
 bool initWifi()
 {
-  // Let WiFi Manager handle connections
-  wc.setDebug(true);
+  // Disable debug for WiFi connect
+  wc.setDebug(false);
 
   /* Set our callbacks */
   wc.setAPCallback(configModeCallback);
@@ -467,6 +467,9 @@ bool initWifi()
   char ap_name[13];
   sprintf(ap_name, "linka-%x", g_device_id);
   wc.setAPName(ap_name);
+
+  // Set correct hostname
+  WiFi.hostname(ap_name);
 
   //set config save notify callback
   wc.setSaveConfigCallback(saveConfigCallback);

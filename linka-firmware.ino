@@ -71,7 +71,7 @@ char http_data_template[] = "[{"
                             "\"recorded\": \"%s\""
                             "}]";
 
-// General
+// Global
 uint32_t g_device_id;                    // Unique ID from ESP chip ID
 
 int timezone = 0;
@@ -121,7 +121,7 @@ bool shouldSaveConfig = false;
 
 /*--------------------------- Program ------------------------------------*/
 void configModeCallback(WiFiConnect *mWiFiConnect) {
-  Serial.println("Entering Access Point");
+  Serial.println("Entering Captive Portal mode");
 }
 
 /*
@@ -137,6 +137,7 @@ void saveConfigCallback () {
 void setup()
 {
   Serial.begin(SERIAL_BAUD_RATE);   // GPIO1, GPIO3 (TX/RX pin on ESP-12E Development Board)
+  delay(100);
   Serial.println();
   Serial.print("Air Quality Sensor starting up, v");
   Serial.println(VERSION);
@@ -152,29 +153,11 @@ void setup()
   Serial.print("Device ID: ");
   Serial.println(g_device_id, HEX);
 
+  // Initialize File System
   initFS();
 
-  // Wait before we attempt to connect to Wifi
-  // In the case of a power outage, wifi might take a while to be ready, we don't want
-  // the sensor to go to captive portal mode too quickly.
-  // TODO(gservin): Find a way to only wait if there's already a WiFi config stored
-  Serial.println("Waiting to let wifi start...");
-  delay(60 * 1000); // wait roughly 60 seconds
+  // Initialize WiFi
   initWifi();
-
-  Serial.println("\nUsing the following parameters:");
-  Serial.print("API URL: ");
-  Serial.println(api_url);
-  Serial.print("API-key: ");
-  Serial.println(api_key);
-  Serial.print("Latitude: ");
-  Serial.println(latitude);
-  Serial.print("Longitude: ");
-  Serial.println(longitude);
-  Serial.print("Sensor: ");
-  Serial.println(sensor);
-  Serial.print("Description: ");
-  Serial.println(description);
 
   delay(100);
 
@@ -191,10 +174,6 @@ void setup()
     time(&now);
     timeinfo = localtime(&now);
   }
-  Serial.println("Ready");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-
 }
 
 /*
@@ -210,7 +189,7 @@ void loop()
   {
     // Wifi Dies? Start Portal Again
     if (WiFi.status() != WL_CONNECTED) {
-      if (!wc.autoConnect()) wc.startConfigurationPortal(AP_WAIT);
+      if (!wc.autoConnect()) wc.startConfigurationPortal(AP_RESET);
 
     }
   }
@@ -413,6 +392,8 @@ void reportToSerial()
 */
 void initOta()
 {
+  Serial.println("Initializing OTA...");
+
   // Setup OTA
   ArduinoOTA.onStart([]() {
     String type;
@@ -453,6 +434,8 @@ void initOta()
 */
 void initWifi()
 {
+  Serial.println("Initializing WiFi...");
+  
   // Disable debug for WiFi connect
   wc.setDebug(false);
 
@@ -492,13 +475,22 @@ void initWifi()
      AP_RESET = Restart the chip
      AP_WAIT  = Trap in a continuous loop with captive portal until we have a working WiFi connection
   */
-  if (!wc.autoConnect() || force_captive_portal) { // try to connect to wifi
+  if (!wc.autoConnect() && force_captive_portal) { // try to connect to wifi
     /* We could also use button etc. to trigger the portal on demand within main loop */
+    Serial.println("\tEntering captive portal, never checking for wifi");
     wc.startConfigurationPortal(AP_WAIT); //if not connected show the configuration portal
   }
+  else if(!force_captive_portal){
+    Serial.println("\tEntering captive portal, still checking for wifi");
+    wc.startConfigurationPortal(AP_RESET); //if not connected show the configuration portal
+  }
+
+  Serial.println("\tConnected to WiFi");
+  Serial.print("\tIP address: ");
+  Serial.println(WiFi.localIP());
 
   if (shouldSaveConfig) {
-    Serial.println("Saving configurations to filesystem");
+    Serial.println("\nSaving configurations to filesystem");
     DynamicJsonBuffer jsonBuffer;
     JsonObject& json = jsonBuffer.createObject();
     json["api_key"] = api_key_param.getValue();
@@ -510,7 +502,7 @@ void initWifi()
 
     File configFile = LittleFS.open("/config.json", "w");
     if (!configFile) {
-      Serial.println("failed to open config file for writing");
+      Serial.println("\tFailed to open config file for writing");
     }
 
     json.printTo(Serial);
@@ -536,16 +528,16 @@ void initFS(void)
   //LittleFS.format();
 
   //read configuration from FS json
-  Serial.println("mounting FS...");
+  Serial.println("Mounting FS...");
 
   if (LittleFS.begin()) {
-    Serial.println("mounted file system");
+    Serial.println("\tMounted file system");
     if (LittleFS.exists("/config.json")) {
       //file exists, reading and loading
-      Serial.println("reading config file");
+      Serial.println("\tReading config file");
       File configFile = LittleFS.open("/config.json", "r");
       if (configFile) {
-        Serial.println("opened config file");
+        Serial.println("\tOpened config file");
         size_t size = configFile.size();
         // Allocate a buffer to store contents of the file.
         std::unique_ptr<char[]> buf(new char[size]);
@@ -553,7 +545,7 @@ void initFS(void)
         configFile.readBytes(buf.get(), size);
         DynamicJsonBuffer jsonBuffer;
         JsonObject& json = jsonBuffer.parseObject(buf.get());
-        json.printTo(Serial);
+        //json.printTo(Serial);
         if (json.success()) {
 
           strcpy(api_key, json["api_key"]);
@@ -567,17 +559,31 @@ void initFS(void)
             strcpy(api_url, json["api_url"]);
           }
           if (strcmp(api_key, "") == 0) {
-            Serial.println("Stored parameters are empty, reset the parameters");
+            Serial.println("\tStored parameters are empty, reset the parameters");
             force_captive_portal = true;
           }
-
+          else {
+            Serial.println("\n\tUsing the following parameters:");
+            Serial.print("\t\tAPI URL: ");
+            Serial.println(api_url);
+            Serial.print("\t\tAPI-key: ");
+            Serial.println(api_key);
+            Serial.print("\t\tLatitude: ");
+            Serial.println(latitude);
+            Serial.print("\t\tLongitude: ");
+            Serial.println(longitude);
+            Serial.print("\t\tSensor: ");
+            Serial.println(sensor);
+            Serial.print("\t\tDescription: ");
+            Serial.println(description);
+          }
         } else {
-          Serial.println("failed to load json config");
+          Serial.println("\tFailed to load json config");
         }
         configFile.close();
       }
     }
   } else {
-    Serial.println("failed to mount FS");
+    Serial.println("\tFailed to mount FS");
   }
 }

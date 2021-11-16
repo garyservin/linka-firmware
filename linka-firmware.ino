@@ -121,7 +121,7 @@ bool shouldSaveConfig = false;
 
 /*--------------------------- Program ------------------------------------*/
 void configModeCallback(WiFiConnect *mWiFiConnect) {
-  Serial.println("Entering Access Point");
+  Serial.println("Entering Captive Portal mode");
 }
 
 /*
@@ -154,11 +154,6 @@ void setup()
 
   initFS();
 
-  // Wait before we attempt to connect to Wifi
-  // In the case of a power outage, wifi might take a while to be ready, we don't want
-  // the sensor to go to captive portal mode too quickly.
-  // TODO(gservin): Find a way to only wait if there's already a WiFi config stored
-  Serial.println("Waiting to let wifi start...");
   initWifi();
 
   Serial.println("\nUsing the following parameters:");
@@ -491,9 +486,14 @@ void initWifi()
      AP_RESET = Restart the chip
      AP_WAIT  = Trap in a continuous loop with captive portal until we have a working WiFi connection
   */
-  if (!wc.autoConnect() || force_captive_portal) { // try to connect to wifi
+  if (!wc.autoConnect() && force_captive_portal) { // try to connect to wifi
     /* We could also use button etc. to trigger the portal on demand within main loop */
+    Serial.println("Entering captive portal, never checking for wifi");
     wc.startConfigurationPortal(AP_WAIT); //if not connected show the configuration portal
+  }
+  else if(!force_captive_portal){
+    Serial.println("Entering captive portal, but checking for wifi");
+    wc.startConfigurationPortal(AP_RESET); //if not connected show the configuration portal
   }
 
   if (shouldSaveConfig) {

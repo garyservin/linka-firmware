@@ -23,7 +23,16 @@ Install [ PlatformIO ](https://platformio.org/platformio-ide) and...
 platformio run -t upload
 ````
 
+#### ... if you want to upload via OTA, add the following lines to the `platformio.ini`
+
 and the code will compile and upload to your connected device (it should be detected automatically)
+
+```bash
+upload_protocol = espota
+upload_port = <IP_ADDRESS_OF_YOUR_SENSOR>
+````
+
+and upload just like the previous method.
 
 ### Arduino IDE
 
@@ -50,8 +59,6 @@ and click on **Ok**
 - Install these libraries by clicking on the **Tools -> Manage Libraries...**
 
   * WifiConnect Lite
-  * Adafruit GFX Library (it should also ask you to install Adafruit BusIO, click on **Install all**)
-  * Adafruit SSD1306
   * PubSubClient (by Nick O'Leary)
   * ArduinoJson (important! select a version previous to 6.0.0, 5.13.5 i.e.)
 

@@ -475,14 +475,16 @@ void initWifi()
      AP_RESET = Restart the chip
      AP_WAIT  = Trap in a continuous loop with captive portal until we have a working WiFi connection
   */
-  if (!wc.autoConnect() && force_captive_portal) { // try to connect to wifi
-    /* We could also use button etc. to trigger the portal on demand within main loop */
-    Serial.println("\tEntering captive portal, never checking for wifi");
-    wc.startConfigurationPortal(AP_WAIT); //if not connected show the configuration portal
-  }
-  else if(!force_captive_portal){
-    Serial.println("\tEntering captive portal, still checking for wifi");
-    wc.startConfigurationPortal(AP_RESET); //if not connected show the configuration portal
+  if (!wc.autoConnect()) { // try to connect to wifi
+    if(force_captive_portal){
+      /* We could also use button etc. to trigger the portal on demand within main loop */
+      Serial.println("\tEntering captive portal, never checking for wifi");
+      wc.startConfigurationPortal(AP_WAIT); //if not connected show the configuration portal
+    }
+    else {
+      Serial.println("\tEntering captive portal, still checking for wifi");
+      wc.startConfigurationPortal(AP_RESET); //if not connected show the configuration portal
+    }
   }
 
   Serial.println("\tConnected to WiFi");

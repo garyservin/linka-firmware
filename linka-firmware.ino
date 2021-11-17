@@ -13,15 +13,12 @@
   Copyright 2020 Linka Gonzalez
 */
 #define VERSION "0.2"
-#define USE_LittleFS
 #include <FS.h>                   // This needs to be first, or it all crashes and burns...
-#include <SPI.h>                  // Explicit #include of built-in SPI needed for platformio 
 /*--------------------------- Configuration ------------------------------*/
 // Configuration should be done in the included file:
 #include "config.h"
 
 /*--------------------------- Libraries ----------------------------------*/
-#include <Wire.h>                     // For I2C
 #include <SoftwareSerial.h>           // Allows PMS to avoid the USB serial port
 #include <WiFiConnect.h>              // Allow configuring WiFi via captive portal
 #include <ESP8266WiFi.h>              // ESP8266 WiFi driver
@@ -80,7 +77,8 @@ time_t now;
 struct tm * timeinfo;
 
 char recorded_template[] = "%d-%02d-%02dT%02d:%02d:%02d.000Z";
-bool force_captive_portal = false;
+bool force_configuration_portal = false;
+bool force_params_portal = false;
 
 /*--------------------------- Function Signatures ------------------------*/
 void initOta();
@@ -102,26 +100,19 @@ HTTPClient http;
 
 // WifiManager
 WiFiConnect wc;
-WiFiConnectParam api_key_param("api_key", "API Key", "", 33);
-WiFiConnectParam latitude_param("latitude", "Latitude", "", 13);
-WiFiConnectParam longitude_param("longitude", "Longitude", "", 13);
-WiFiConnectParam sensor_param("sensor", "Sensor model", "PMS7003", 8);
-WiFiConnectParam description_param("description", "Description", "", 21);
-WiFiConnectParam api_url_param("api_url", "URL for the backend", "https://rald-dev.greenbeep.com/api/v1/measurements", 71);
 
 // vars to store parameters
 char api_key[33] = "";
 char latitude[12] = "";
 char longitude[12] = "";
 char description[21] = "";
-char api_url[71] = "";
+char api_url[71] = "https://rald-dev.greenbeep.com/api/v1/measurements";
 
 // flag for saving data
 bool shouldSaveConfig = false;
 
 /*--------------------------- Program ------------------------------------*/
 void configModeCallback(WiFiConnect *mWiFiConnect) {
-  Serial.println("Entering Captive Portal mode");
 }
 
 /*
@@ -139,7 +130,7 @@ void setup()
   Serial.begin(SERIAL_BAUD_RATE);   // GPIO1, GPIO3 (TX/RX pin on ESP-12E Development Board)
   delay(100);
   Serial.println();
-  Serial.print("Air Quality Sensor starting up, v");
+  Serial.print("Linka Air Quality Sensor v");
   Serial.println(VERSION);
 
   // Open a connection to the PMS and put it into passive mode
@@ -174,6 +165,8 @@ void setup()
     time(&now);
     timeinfo = localtime(&now);
   }
+
+  Serial.println("Sensor configured correctly...");
 }
 
 /*
@@ -435,18 +428,26 @@ void initOta()
 void initWifi()
 {
   Serial.println("Initializing WiFi...");
-  
+  Serial.print("\tStored SSID: ");
+  Serial.println(WiFi.SSID());
+
   // Disable debug for WiFi connect
   wc.setDebug(false);
 
-  /* Set our callbacks */
+  // Set our callbacks
   wc.setAPCallback(configModeCallback);
+
+  // Set config save notify callback
+  wc.setSaveConfigCallback(saveConfigCallback);
 
   // Set how many connection attempts before we fail and go to captive portal mode
   wc.setRetryAttempts(5);
 
+  // How long we wait for the connection attempt to timeout
+  wc.setConnectionTimeoutSecs(10);
+
   // How long to wait in captive portal mode before we try to reconnect
-  wc.setAPModeTimeoutMins(5);
+  wc.setAPModeTimeoutMins(3);
 
   // Set Access Point name for captive portal mode
   char ap_name[13];
@@ -456,10 +457,13 @@ void initWifi()
   // Set correct hostname
   WiFi.hostname(ap_name);
 
-  //set config save notify callback
-  wc.setSaveConfigCallback(saveConfigCallback);
-
   // Configure custom parameters
+  WiFiConnectParam api_key_param("api_key", "API Key", api_key, 33);
+  WiFiConnectParam latitude_param("latitude", "Latitude", latitude, 13);
+  WiFiConnectParam longitude_param("longitude", "Longitude", longitude, 13);
+  WiFiConnectParam sensor_param("sensor", "Sensor model", sensor, 8);
+  WiFiConnectParam description_param("description", "Description", description, 21);
+  WiFiConnectParam api_url_param("api_url", "URL for the backend", api_url, 71);
   wc.addParameter(&api_key_param);
   wc.addParameter(&latitude_param);
   wc.addParameter(&longitude_param);
@@ -469,21 +473,14 @@ void initWifi()
 
   //wc.resetSettings(); //helper to remove the stored wifi connection, comment out after first upload and re upload
 
-  /*
-     AP_NONE = Continue executing code
-     AP_LOOP = Trap in a continuous loop - Device is useless
-     AP_RESET = Restart the chip
-     AP_WAIT  = Trap in a continuous loop with captive portal until we have a working WiFi connection
-  */
-  if (!wc.autoConnect()) { // try to connect to wifi
-    if(force_captive_portal){
-      /* We could also use button etc. to trigger the portal on demand within main loop */
-      Serial.println("\tEntering captive portal, never checking for wifi");
-      wc.startConfigurationPortal(AP_WAIT); //if not connected show the configuration portal
-    }
-    else {
-      Serial.println("\tEntering captive portal, still checking for wifi");
-      wc.startConfigurationPortal(AP_RESET); //if not connected show the configuration portal
+  // Check if we need to start captive portal
+  if (!wc.autoConnect()) {
+      Serial.println("\tUnable to connect to wifi, starting Configuration portal and checking periodically for wifi");
+      wc.startConfigurationPortal(AP_RESET); // if not connected show the configuration portal
+  } else {
+    if (force_params_portal) {
+      Serial.println("\tConfig params not found, start Params Portal");
+      wc.startParamsPortal(AP_WAIT); //if not connected show the configuration portal
     }
   }
 
@@ -492,7 +489,7 @@ void initWifi()
   Serial.println(WiFi.localIP());
 
   if (shouldSaveConfig) {
-    Serial.println("\nSaving configurations to filesystem");
+    Serial.println("\tSaving configurations to filesystem");
     DynamicJsonBuffer jsonBuffer;
     JsonObject& json = jsonBuffer.createObject();
     json["api_key"] = api_key_param.getValue();
@@ -505,19 +502,22 @@ void initWifi()
     File configFile = LittleFS.open("/config.json", "w");
     if (!configFile) {
       Serial.println("\tFailed to open config file for writing");
+    } else {
+      json.printTo(configFile);
+      configFile.close();
     }
 
+    Serial.print('\t');
     json.printTo(Serial);
-    json.printTo(configFile);
+    Serial.println();
 
+    // Copy parameters to variables
     strcpy(api_key, json["api_key"]);
     strcpy(latitude, json["latitude"]);
     strcpy(longitude, json["longitude"]);
     strcpy(sensor, json["sensor"]);
     strcpy(description, json["description"]);
     strcpy(api_url, json["api_url"]);
-
-    configFile.close();
   }
 }
 
@@ -554,18 +554,18 @@ void initFS(void)
           strcpy(latitude, json["latitude"]);
           strcpy(longitude, json["longitude"]);
           strcpy(sensor, json["sensor"]);
-          if (json.containsKey("description")){
+          if (json.containsKey("description")) {
             strcpy(description, json["description"]);
           }
-          if (json.containsKey("api_url")){
+          if (json.containsKey("api_url")) {
             strcpy(api_url, json["api_url"]);
           }
           if (strcmp(api_key, "") == 0) {
             Serial.println("\tStored parameters are empty, reset the parameters");
-            force_captive_portal = true;
+            force_params_portal = true;
           }
           else {
-            Serial.println("\n\tUsing the following parameters:");
+            Serial.println("\tRead the following parameters:");
             Serial.print("\t\tAPI URL: ");
             Serial.println(api_url);
             Serial.print("\t\tAPI-key: ");
@@ -583,7 +583,12 @@ void initFS(void)
           Serial.println("\tFailed to load json config");
         }
         configFile.close();
+      } else {
+        Serial.println("\tFailed to open config file");
       }
+    } else {
+      Serial.println("\tConfig file wasn't found");
+      force_params_portal = true;
     }
   } else {
     Serial.println("\tFailed to mount FS");

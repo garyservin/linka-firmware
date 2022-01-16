@@ -12,21 +12,24 @@
 
   Copyright 2020 Linka Gonzalez
 */
+
 #include <FS.h>                   // This needs to be first, or it all crashes and burns...
+
 /*--------------------------- Configuration ------------------------------*/
 // Configuration should be done in the included file:
 #include "config.h"
 
 /*--------------------------- Libraries ----------------------------------*/
-#include <SoftwareSerial.h>           // Allows PMS to avoid the USB serial port
-#include <WiFiConnect.h>              // Allow configuring WiFi via captive portal
-#include <ESP8266WiFi.h>              // ESP8266 WiFi driver
-#include <ESP8266HTTPClient.h>        // HTTP Client
-#include <ArduinoOTA.h>               // Allow local OTA programming
-#include <time.h>                     // To get current time
-#include "PMS.h"                      // Particulate Matter Sensor driver (embedded)
 #include <ArduinoJson.h>              // https://github.com/bblanchon/ArduinoJson
-#include <LittleFS.h>
+#include <ArduinoOTA.h>               // Allow local OTA programming
+#include <ESP8266HTTPClient.h>        // HTTP Client
+#include <ESP8266httpUpdate.h>        // Allow remote OTA programming
+#include <ESP8266WiFi.h>              // ESP8266 WiFi driver
+#include <LittleFS.h>                 // File System library
+#include <SoftwareSerial.h>           // Allows PMS to avoid the USB serial port
+#include <time.h>                     // To get current time
+#include <WiFiConnect.h>              // Allow configuring WiFi via captive portal
+#include "PMS.h"                      // Particulate Matter Sensor driver (embedded)
 
 /*--------------------------- Global Variables ---------------------------*/
 // Particulate matter sensor
@@ -67,22 +70,24 @@ char http_data_template[] = "[{"
                             "\"recorded\": \"%s\""
                             "}]";
 
-// Global
 uint32_t g_device_id;                    // Unique ID from ESP chip ID
 
-int timezone = 0;
-int dst = 0;
+// Time keeping
 time_t now;
 struct tm * timeinfo;
+char recorded_template[]        = "%d-%02d-%02dT%02d:%02d:%02d.000Z";
 
-char recorded_template[] = "%d-%02d-%02dT%02d:%02d:%02d.000Z";
 bool force_configuration_portal = false;
-bool force_params_portal = false;
+bool force_params_portal        = false;
+
+#define REMOTE_OTA_TIMEOUT      24 * 60 * 60 * 1000 //Check every 24 hours
+uint32_t  g_remote_ota_last_run = 0;  // Timestamp when last OTA was run
 
 /*--------------------------- Function Signatures ------------------------*/
+void initFS();
 void initOta();
 void initWifi();
-void initFS();
+void handleRemoteOta();
 void updatePmsReadings();
 
 /*--------------------------- Instantiate Global Objects -----------------*/
@@ -106,6 +111,7 @@ char latitude[12] = "";
 char longitude[12] = "";
 char description[21] = "";
 char api_url[71] = "https://rald-dev.greenbeep.com/api/v1/measurements";
+char ota_server[71] = "https://linka.servin.dev/ota";
 
 // flag for saving data
 bool shouldSaveConfig = false;
@@ -114,11 +120,26 @@ bool shouldSaveConfig = false;
 void configModeCallback(WiFiConnect *mWiFiConnect) {
 }
 
-/*
-    Callback notifying us of the need to save config
-*/
+// Callback notifying us of the need to save config
 void saveConfigCallback () {
   shouldSaveConfig = true;
+}
+
+// Remote OTA callbacks
+void update_started() {
+  Serial.println("CALLBACK:  HTTP update process started");
+}
+
+void update_finished() {
+  Serial.println("CALLBACK:  HTTP update process finished");
+}
+
+void update_progress(int cur, int total) {
+  Serial.printf("CALLBACK:  HTTP update process at %d of %d bytes...\n", cur, total);
+}
+
+void update_error(int err) {
+  Serial.printf("CALLBACK:  HTTP update fatal error code %d\n", err);
 }
 
 /*
@@ -143,19 +164,20 @@ void setup()
   Serial.print("Device ID: ");
   Serial.println(g_device_id, HEX);
 
+  // Ignore SSL certificate, required to use SSL without providing the SSL certificate
+  client.setInsecure();
+
   // Initialize File System
   initFS();
 
   // Initialize WiFi
   initWifi();
 
-  delay(100);
-
   // Initialize OTA
   initOta();
 
   // Configure ntp client
-  configTime(timezone * 3600, dst * 3600, "pool.ntp.org", "time.nist.gov");
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
 
   time(&now);
   timeinfo = localtime(&now);
@@ -173,27 +195,23 @@ void setup()
 */
 void loop()
 {
-  if (WiFi.status() == WL_CONNECTED)
-  {
+  if (WiFi.status() == WL_CONNECTED) {
+    // If we're connected to WiFi, manage OTA
     ArduinoOTA.handle();
+    handleRemoteOta();
   }
-  else
-  {
-    // Wifi Dies? Start Portal Again
-    if (WiFi.status() != WL_CONNECTED) {
-      if (!wc.autoConnect()) wc.startConfigurationPortal(AP_RESET);
-
-    }
+  else {
+    // If we've lost Wifi, start captive portal, but check periodically for WiFi
+    wc.startConfigurationPortal(AP_RESET);
   }
-
+ 
   updatePmsReadings();
 }
 
 /*
   Update particulate matter sensor values
 */
-void updatePmsReadings()
-{
+void updatePmsReadings() {
   uint32_t time_now = millis();
 
   // Check if we've been in the sleep state for long enough
@@ -302,8 +320,6 @@ void reportToHttp()
           recorded);
   Serial.println(measurements);
 
-  client.setInsecure();
-
   if (http.begin(client, api_url)) {
 
     // Add headers
@@ -380,7 +396,7 @@ void reportToSerial()
 }
 
 /*
-  Start OTA
+  Initialize Local and Remote OTA
 */
 void initOta()
 {
@@ -419,10 +435,16 @@ void initOta()
     }
   });
   ArduinoOTA.begin();
+
+  // Initialize remote OTA
+  ESPhttpUpdate.onStart(update_started);
+  ESPhttpUpdate.onEnd(update_finished);
+  ESPhttpUpdate.onProgress(update_progress);
+  ESPhttpUpdate.onError(update_error);
 }
 
 /*
-  Connect to Wifi. Returns false if it can't connect.
+  Configure Wifi and captive portal
 */
 void initWifi()
 {
@@ -446,7 +468,7 @@ void initWifi()
   wc.setConnectionTimeoutSecs(10);
 
   // How long to wait in captive portal mode before we try to reconnect
-  wc.setAPModeTimeoutMins(3);
+  wc.setAPModeTimeoutMins(1);
 
   // Set Access Point name for captive portal mode
   char ap_name[13];
@@ -463,12 +485,14 @@ void initWifi()
   WiFiConnectParam sensor_param("sensor", "Sensor model", sensor, 8);
   WiFiConnectParam description_param("description", "Description", description, 21);
   WiFiConnectParam api_url_param("api_url", "URL for the backend", api_url, 71);
+  WiFiConnectParam ota_server_param("ota_server", "Server for OTA upgrades", ota_server, 71);
   wc.addParameter(&api_key_param);
   wc.addParameter(&latitude_param);
   wc.addParameter(&longitude_param);
   wc.addParameter(&sensor_param);
   wc.addParameter(&description_param);
   wc.addParameter(&api_url_param);
+  wc.addParameter(&ota_server_param);
 
   //wc.resetSettings(); //helper to remove the stored wifi connection, comment out after first upload and re upload
 
@@ -497,6 +521,7 @@ void initWifi()
     json["sensor"] = sensor_param.getValue();
     json["description"] = description_param.getValue();
     json["api_url"] = api_url_param.getValue();
+    json["ota_server"] = ota_server_param.getValue();
 
     File configFile = LittleFS.open("/config.json", "w");
     if (!configFile) {
@@ -517,6 +542,7 @@ void initWifi()
     strcpy(sensor, json["sensor"]);
     strcpy(description, json["description"]);
     strcpy(api_url, json["api_url"]);
+    strcpy(ota_server, json["ota_server"]);
   }
 }
 
@@ -559,6 +585,9 @@ void initFS(void)
           if (json.containsKey("api_url")) {
             strcpy(api_url, json["api_url"]);
           }
+          if (json.containsKey("ota_server")) {
+            strcpy(ota_server, json["ota_server"]);
+          }
           if (strcmp(api_key, "") == 0) {
             Serial.println("\tStored parameters are empty, reset the parameters");
             force_params_portal = true;
@@ -577,6 +606,8 @@ void initFS(void)
             Serial.println(sensor);
             Serial.print("\t\tDescription: ");
             Serial.println(description);
+            Serial.print("\t\tRemote OTA Server: ");
+            Serial.println(ota_server);
           }
         } else {
           Serial.println("\tFailed to load json config");
@@ -591,5 +622,32 @@ void initFS(void)
     }
   } else {
     Serial.println("\tFailed to mount FS");
+  }
+}
+
+/*
+    Check if we need to check for new version on the remote OTA server
+*/
+void handleRemoteOta() {
+  uint32_t time_now = millis();
+
+  if (time_now - g_remote_ota_last_run > REMOTE_OTA_TIMEOUT) {
+    g_remote_ota_last_run = time_now;
+    Serial.printf("Remote OTA: Checking for new available version");
+    t_httpUpdate_return ret = ESPhttpUpdate.update(client, ota_server, VERSION);
+
+    switch (ret) {
+      case HTTP_UPDATE_FAILED:
+        Serial.printf("Remote OTA: failed, Error (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+        break;
+
+      case HTTP_UPDATE_NO_UPDATES:
+        Serial.println("Remote OTA: No updates");
+        break;
+
+      case HTTP_UPDATE_OK:
+        Serial.println("Remote OTA: Update OK");
+        break;
+    }
   }
 }

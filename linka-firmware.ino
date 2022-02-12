@@ -572,7 +572,6 @@ void initFS(void)
         configFile.readBytes(buf.get(), size);
         DynamicJsonBuffer jsonBuffer;
         JsonObject& json = jsonBuffer.parseObject(buf.get());
-        //json.printTo(Serial);
         if (json.success()) {
 
           strcpy(api_key, json["api_key"]);

@@ -204,7 +204,7 @@ void loop()
     // If we've lost Wifi, start captive portal, but check periodically for WiFi
     wc.startConfigurationPortal(AP_RESET);
   }
- 
+
   updatePmsReadings();
 }
 
@@ -508,6 +508,8 @@ void initWifi()
   }
 
   Serial.println("\tConnected to WiFi");
+  Serial.print("\tSSID: ");
+  Serial.println(WiFi.SSID());
   Serial.print("\tIP address: ");
   Serial.println(WiFi.localIP());
 

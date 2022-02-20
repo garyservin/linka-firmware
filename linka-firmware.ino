@@ -632,7 +632,7 @@ void initFS(void)
 void handleRemoteOta() {
   uint32_t time_now = millis();
 
-  if (time_now - g_remote_ota_last_run > REMOTE_OTA_TIMEOUT) {
+  if (time_now - g_remote_ota_last_run > REMOTE_OTA_TIMEOUT || g_remote_ota_last_run == 0) {
     g_remote_ota_last_run = time_now;
     Serial.printf("Remote OTA: Checking for new available version");
     t_httpUpdate_return ret = ESPhttpUpdate.update(client, ota_server, VERSION);

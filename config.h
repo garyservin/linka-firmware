@@ -4,7 +4,7 @@ uint32_t    g_pms_warmup_period     = 30;               // Seconds to warm up PM
 uint32_t    g_pms_report_period     = 120;              // Seconds between reports
 char sensor[8]                      = "PMS7003";
 
-#define VERSION                 "0.3.0"
+#define VERSION                 "0.3.1"
 
 /* Serial */
 #define     SERIAL_BAUD_RATE    115200                // Speed for USB serial console

@@ -202,7 +202,11 @@ void loop()
   }
   else {
     // If we've lost Wifi, start captive portal, but check periodically for WiFi
+    // When updating to newer SDK, need to make sure we can store the wifi configuration
+    // https://github.com/esp8266/Arduino/pull/7902
+    WiFi.persistent(true);
     wc.startConfigurationPortal(AP_RESET);
+    WiFi.persistent(false);
   }
 
   updatePmsReadings();
@@ -499,7 +503,11 @@ void initWifi()
   // Check if we need to start captive portal
   if (!wc.autoConnect()) {
       Serial.println("\tUnable to connect to wifi, starting Configuration portal and checking periodically for wifi");
+      // When updating to newer SDK, need to make sure we can store the wifi configuration
+      // https://github.com/esp8266/Arduino/pull/7902
+      WiFi.persistent(true);
       wc.startConfigurationPortal(AP_RESET); // if not connected show the configuration portal
+      WiFi.persistent(false);
   } else {
     if (force_params_portal) {
       Serial.println("\tConfig params not found, start Params Portal");

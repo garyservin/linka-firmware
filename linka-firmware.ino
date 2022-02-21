@@ -165,6 +165,9 @@ void setup()
   Serial.print("Device ID: ");
   Serial.println(g_device_id, HEX);
 
+  // Check if we want to factory reset the sensor
+  check_reset();
+
   // Ignore SSL certificate, required to use SSL without providing the SSL certificate
   client.setInsecure();
 
@@ -491,8 +494,6 @@ void initWifi()
   wc.addParameter(&api_url_param);
   wc.addParameter(&ota_server_param);
 
-  //wc.resetSettings(); //helper to remove the stored wifi connection, comment out after first upload and re upload
-
   // Check if we need to start captive portal
   if (!wc.autoConnect()) {
       Serial.println("\tUnable to connect to wifi, starting Configuration portal and checking periodically for wifi");
@@ -554,9 +555,6 @@ void initWifi()
 */
 void initFS(void)
 {
-  //clean FS, for testing
-  //LittleFS.format();
-
   //read configuration from FS json
   Serial.println("Mounting FS...");
 
@@ -668,6 +666,25 @@ void handleRemoteOta() {
       case HTTP_UPDATE_OK:
         Serial.println("Remote OTA: Update OK");
         break;
+    }
+  }
+}
+
+/*
+    Check if factory reset was requested
+*/
+void check_reset()
+{
+  pinMode(ESP_FACTORY_RESET, INPUT_PULLUP);
+
+  if ( digitalRead(ESP_FACTORY_RESET) == LOW) {
+    delay(200);  // Wait 200ms and check if button is reset is still attempted
+    if ( digitalRead(ESP_FACTORY_RESET) == LOW) {
+      Serial.println("Resetting sensor to factory defaults");
+      LittleFS.format(); // Format Filesystem
+      WiFi.persistent(true);
+      WiFi.begin("0", "0"); // Hack to force wifi to be reset
+      wc.resetSettings(); // Reset WiFi Settings
     }
   }
 }

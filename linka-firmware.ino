@@ -86,6 +86,7 @@ uint32_t  g_remote_ota_last_run = 0;  // Timestamp when last OTA was run
 /*--------------------------- Function Signatures ------------------------*/
 void initFS();
 void initOta();
+void initNtp();
 void initWifi();
 void handleRemoteOta();
 void updatePmsReadings();
@@ -176,16 +177,8 @@ void setup()
   // Initialize OTA
   initOta();
 
-  // Configure ntp client
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-
-  time(&now);
-  timeinfo = localtime(&now);
-  while (timeinfo->tm_year == 70) {
-    delay(500);
-    time(&now);
-    timeinfo = localtime(&now);
-  }
+  // Initialize NTP
+  initNtp();
 
   Serial.println("Sensor configured correctly...");
 }
@@ -631,6 +624,24 @@ void initFS(void)
     }
   } else {
     Serial.println("\tFailed to mount FS");
+  }
+}
+
+
+/*
+   Init NTP client to get accurate time
+*/
+void initNtp()
+{
+  Serial.println("Initializing NTP...");
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+
+  time(&now);
+  timeinfo = localtime(&now);
+  while (timeinfo->tm_year == 70) {
+    delay(500);
+    time(&now);
+    timeinfo = localtime(&now);
   }
 }
 

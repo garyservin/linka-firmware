@@ -61,6 +61,7 @@ uint32_t  g_pm10p0_ppd_value    = 0;  // Particles Per Deciliter pm10.0 reading
 char http_data_template[] = "[{"
                             "\"sensor\": \"%s\","
                             "\"source\": \"%s\","
+                            "\"version\": \"%s\","
                             "\"description\": \"%s\","
                             "\"pm1dot0\": %d,"
                             "\"pm2dot5\": %d,"
@@ -311,6 +312,7 @@ void reportToHttp()
           http_data_template,
           sensor,
           source,
+          VERSION,
           description,
           g_pm1p0_sp_value,
           g_pm2p5_sp_value,

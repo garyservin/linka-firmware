@@ -2,11 +2,15 @@
 
 ESP8266 firmware for [AireLibre](https://github.com/melizeche/AireLibre)
 
-## Installation
+## I want to flash my board with the latest firmware
+
+Go to [garyservin.github.io/linka-firmware](https://garyservin.github.io/linka-firmware) and follow the instructions
+
+## I want to build from sources
 
 You can use [ PlatformIO ](https://platformio.org/platformio-ide) or [ Arduino IDE ](https://www.arduino.cc/en/software) to upload the firmware
 
-### PlatformIO
+### PlatformIO (recommended)
 
 Install [ PlatformIO ](https://platformio.org/platformio-ide) and...
 

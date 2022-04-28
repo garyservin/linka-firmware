@@ -1,0 +1,12 @@
+{
+  "name": "Linka Firmware Flasher",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP8266",
+      "parts": [
+        { "path": "https://linka.servin.dev/latest_firmware", "offset": 0 }
+      ]
+    }
+  ]
+}

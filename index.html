@@ -10,37 +10,9 @@ body {
 </head>
 
 <body>
-    <h1>Linka Firmware Flasher</h1>
+    <h1>[DEPRECATED] Linka Firmware Flasher [DEPRECATED]</h1>
 
-    <div id="main" style="display: none;">
-
-        <script type="module" src="https://unpkg.com/esp-web-tools@3.4.2/dist/web/install-button.js?module"></script>
-        <esp-web-install-button id="installButton" manifest="manifest.json">
-            <button slot="activate">Flash me!</button>
-        </esp-web-install-button>
-        <br><br>
-        <ol>
-            <li>Connect your Linka Board via USB</li>
-            <li>Click on the `Flash me!` button</li>
-            <li>A pop-up will open, select the correct serial port, on Linux, it's usually `ttyUSB0`</li>
-            <li>If the process fails, try running it again</li>
-        </ol>
-        <span>NOTE: On Windows, you will need to install the driver for the serial port first. The driver can be found <a href="http://www.wch-ic.com/downloads/CH341SER_EXE.html">here</a></span>
-
-    </div>
-    <div id="notSupported" style="display: none;">
-        Your browser does not support the Web Serial API.
-    </div>
-
-    <script>
-        if(navigator.serial){
-            document.getElementById("notSupported").style.display = 'none';
-            document.getElementById("main").style.display = 'block';
-        } else {
-            document.getElementById("notSupported").style.display = 'block';
-            document.getElementById("main").style.display = 'none';
-        }
-    </script>
+    <h2>Go to <a href="https://linka.servin.dev">linka.servin.dev</a> to use the latest version.</h2>
 
 </body>
 

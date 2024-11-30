@@ -4,7 +4,7 @@ ESP8266 firmware for [AireLibre](https://github.com/melizeche/AireLibre)
 
 ## I want to flash my board with the latest firmware
 
-Go to [garyservin.github.io/linka-firmware](https://garyservin.github.io/linka-firmware) and follow the instructions
+Go to [linka.servin.dev](https://linka.servin.dev) and follow the instructions
 
 ## I want to build from sources
 

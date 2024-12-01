@@ -482,8 +482,8 @@ void initWifi()
 
   // Configure custom parameters
   WiFiConnectParam api_key_param("api_key", "API Key", api_key, 33);
-  WiFiConnectParam latitude_param("latitude", "Latitude", latitude, 13);
-  WiFiConnectParam longitude_param("longitude", "Longitude", longitude, 13);
+  WiFiConnectParam latitude_param("latitude", "Latitude", latitude, 11);
+  WiFiConnectParam longitude_param("longitude", "Longitude", longitude, 11);
   WiFiConnectParam sensor_param("sensor", "Sensor model", sensor, 8);
   WiFiConnectParam description_param("description", "Description", description, 21);
   WiFiConnectParam api_url_param("api_url", "URL for the backend", api_url, 71);

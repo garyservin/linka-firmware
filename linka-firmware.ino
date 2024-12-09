@@ -112,7 +112,7 @@ char api_key[33] = "";
 char latitude[12] = "";
 char longitude[12] = "";
 char description[21] = "";
-char api_url[71] = "https://rald-dev.greenbeep.com/api/v1/measurements";
+char api_url[71] = "https://api.airelib.re/api/v1/measurements";
 char ota_server[71] = "https://linka.servin.dev/ota";
 
 // flag for saving data

@@ -92,3 +92,14 @@ with git (`git tag vX.Y.Z && git push origin vX.Y.Z`) works too.
 CI builds the firmware, publishes a GitHub release with `linka-firmware-vX.Y.Z.bin`, and
 deploys it to the [OTA server](https://github.com/garyservin/linka-ota-server), which
 offers it to every sensor (pre-releases are uploaded but not offered).
+
+## Testing on a device
+`tools/ota-test.sh` runs a local copy of the [OTA server](https://github.com/garyservin/linka-ota-server)
+(next to this repo) so a test sensor can be updated over the air without touching production:
+```
+tools/ota-test.sh setup          # test dir with a certificate and the latest release
+tools/ota-test.sh serve          # prints the URLs to set in the sensor's setup page
+tools/ota-test.sh add            # build this checkout and serve it as latest
+tools/ota-test.sh latest 0.3.2   # roll back
+```
+Run `tools/ota-test.sh help` for all commands.

@@ -30,6 +30,7 @@
 #include <time.h>                     // To get current time
 #include <WiFiConnect.h>              // Allow configuring WiFi via captive portal
 #include "PMS.h"                      // Particulate Matter Sensor driver (embedded)
+#include "coordinates.h"              // Latitude/longitude validation
 
 /*--------------------------- Global Variables ---------------------------*/
 // Particulate matter sensor
@@ -91,6 +92,8 @@ void initNtp();
 void initWifi();
 void handleRemoteOta();
 void updatePmsReadings();
+void reportToHttp();
+void saveConfig();
 
 /*--------------------------- Instantiate Global Objects -----------------*/
 // Software serial port
@@ -118,10 +121,38 @@ char ota_server[71] = "https://linka.servin.dev/ota";
 // flag for saving data
 bool shouldSaveConfig = false;
 
+// Whether latitude/longitude are valid numbers: measurements are not sent otherwise
+bool g_coordinates_valid = false;
+
+// Setup page parameters. They must outlive initWifi(): the library keeps pointers to
+// them and also shows them in the portal opened from loop() when WiFi is lost.
+// initWifi() sets their values from the stored configuration.
+WiFiConnectParam api_key_param("api_key", "API Key", "", sizeof(api_key));
+WiFiConnectParam latitude_param("latitude", "Latitude", "", sizeof(latitude));
+WiFiConnectParam longitude_param("longitude", "Longitude", "", sizeof(longitude));
+WiFiConnectParam sensor_param("sensor", "Sensor model", "", sizeof(sensor));
+WiFiConnectParam description_param("description", "Description", "", sizeof(description));
+WiFiConnectParam api_url_param("api_url", "URL for the backend", "", sizeof(api_url));
+WiFiConnectParam ota_server_param("ota_server", "Server for OTA upgrades", "", sizeof(ota_server));
+
 /*--------------------------- Program ------------------------------------*/
 // Copy a JSON string value into a fixed-size buffer, treating missing keys as ""
 void copyJsonString(char *dest, size_t dest_size, const char *value) {
   strlcpy(dest, value ? value : "", dest_size);
+}
+
+// Normalize latitude/longitude (at most 6 decimals) and check they are valid
+bool validateCoordinates() {
+  bool latitude_ok = normalizeCoordinate(latitude, sizeof(latitude), 90);
+  bool longitude_ok = normalizeCoordinate(longitude, sizeof(longitude), 180);
+  if (!latitude_ok) {
+    Serial.printf("\tInvalid latitude \"%s\", measurements won't be sent\n", latitude);
+  }
+  if (!longitude_ok) {
+    Serial.printf("\tInvalid longitude \"%s\", measurements won't be sent\n", longitude);
+  }
+  g_coordinates_valid = latitude_ok && longitude_ok;
+  return g_coordinates_valid;
 }
 
 void configModeCallback(WiFiConnect *mWiFiConnect) {
@@ -209,6 +240,9 @@ void loop()
     WiFi.persistent(true);
     wc.startConfigurationPortal(AP_RESET);
     WiFi.persistent(false);
+    if (shouldSaveConfig) {
+      saveConfig();
+    }
   }
 
   updatePmsReadings();
@@ -303,6 +337,11 @@ void reportToHttp()
   char measurements[256];
   char recorded[27];
   char source[10];
+
+  if (!g_coordinates_valid) {
+    Serial.println("[HTTP] Latitude/longitude are not valid, not sending. Fix them in the setup page.");
+    return;
+  }
 
   snprintf(recorded, sizeof(recorded),
           recorded_template,
@@ -489,14 +528,14 @@ void initWifi()
   // Set correct hostname
   WiFi.hostname(ap_name);
 
-  // Configure custom parameters
-  WiFiConnectParam api_key_param("api_key", "API Key", api_key, sizeof(api_key));
-  WiFiConnectParam latitude_param("latitude", "Latitude", latitude, sizeof(latitude));
-  WiFiConnectParam longitude_param("longitude", "Longitude", longitude, sizeof(longitude));
-  WiFiConnectParam sensor_param("sensor", "Sensor model", sensor, sizeof(sensor));
-  WiFiConnectParam description_param("description", "Description", description, sizeof(description));
-  WiFiConnectParam api_url_param("api_url", "URL for the backend", api_url, sizeof(api_url));
-  WiFiConnectParam ota_server_param("ota_server", "Server for OTA upgrades", ota_server, sizeof(ota_server));
+  // Show the stored configuration in the setup page
+  api_key_param.setValue(api_key);
+  latitude_param.setValue(latitude);
+  longitude_param.setValue(longitude);
+  sensor_param.setValue(sensor);
+  description_param.setValue(description);
+  api_url_param.setValue(api_url);
+  ota_server_param.setValue(ota_server);
   wc.addParameter(&api_key_param);
   wc.addParameter(&latitude_param);
   wc.addParameter(&longitude_param);
@@ -517,6 +556,14 @@ void initWifi()
     if (force_params_portal) {
       Serial.println("\tConfig params not found, start Params Portal");
       wc.startParamsPortal(AP_WAIT); //if not connected show the configuration portal
+    } else if (!g_coordinates_valid) {
+      // Give some time to fix them, but don't wait forever: the sensor must keep
+      // checking for OTA updates
+      Serial.println("\tInvalid latitude/longitude, starting Params Portal for 10 minutes");
+      wc.setAPModeTimeoutMins(10);
+      wc.startParamsPortal(AP_NONE);
+      wc.setAPModeTimeoutMins(1);
+      WiFi.mode(WIFI_STA);
     }
   }
 
@@ -527,38 +574,49 @@ void initWifi()
   Serial.println(WiFi.localIP());
 
   if (shouldSaveConfig) {
-    Serial.println("\tSaving configurations to filesystem");
-    DynamicJsonBuffer jsonBuffer;
-    JsonObject& json = jsonBuffer.createObject();
-    json["api_key"] = api_key_param.getValue();
-    json["latitude"] = latitude_param.getValue();
-    json["longitude"] = longitude_param.getValue();
-    json["sensor"] = sensor_param.getValue();
-    json["description"] = description_param.getValue();
-    json["api_url"] = api_url_param.getValue();
-    json["ota_server"] = ota_server_param.getValue();
-
-    File configFile = LittleFS.open("/config.json", "w");
-    if (!configFile) {
-      Serial.println("\tFailed to open config file for writing");
-    } else {
-      json.printTo(configFile);
-      configFile.close();
-    }
-
-    Serial.print('\t');
-    json.printTo(Serial);
-    Serial.println();
-
-    // Copy parameters to variables
-    copyJsonString(api_key, sizeof(api_key), json["api_key"]);
-    copyJsonString(latitude, sizeof(latitude), json["latitude"]);
-    copyJsonString(longitude, sizeof(longitude), json["longitude"]);
-    copyJsonString(sensor, sizeof(sensor), json["sensor"]);
-    copyJsonString(description, sizeof(description), json["description"]);
-    copyJsonString(api_url, sizeof(api_url), json["api_url"]);
-    copyJsonString(ota_server, sizeof(ota_server), json["ota_server"]);
+    saveConfig();
   }
+}
+
+/*
+  Save the parameters entered in the setup page
+*/
+void saveConfig()
+{
+  shouldSaveConfig = false;
+  Serial.println("\tSaving configurations to filesystem");
+
+  // Copy parameters to variables
+  strlcpy(api_key, api_key_param.getValue(), sizeof(api_key));
+  strlcpy(latitude, latitude_param.getValue(), sizeof(latitude));
+  strlcpy(longitude, longitude_param.getValue(), sizeof(longitude));
+  strlcpy(sensor, sensor_param.getValue(), sizeof(sensor));
+  strlcpy(description, description_param.getValue(), sizeof(description));
+  strlcpy(api_url, api_url_param.getValue(), sizeof(api_url));
+  strlcpy(ota_server, ota_server_param.getValue(), sizeof(ota_server));
+  validateCoordinates();
+
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject& json = jsonBuffer.createObject();
+  json["api_key"] = api_key;
+  json["latitude"] = latitude;
+  json["longitude"] = longitude;
+  json["sensor"] = sensor;
+  json["description"] = description;
+  json["api_url"] = api_url;
+  json["ota_server"] = ota_server;
+
+  File configFile = LittleFS.open("/config.json", "w");
+  if (!configFile) {
+    Serial.println("\tFailed to open config file for writing");
+  } else {
+    json.printTo(configFile);
+    configFile.close();
+  }
+
+  Serial.print('\t');
+  json.printTo(Serial);
+  Serial.println();
 }
 
 /*
@@ -600,6 +658,7 @@ void initFS(void)
           if (json.containsKey("ota_server")) {
             copyJsonString(ota_server, sizeof(ota_server), json["ota_server"]);
           }
+          validateCoordinates();
           if (strcmp(api_key, "") == 0) {
             Serial.println("\tStored parameters are empty, reset the parameters");
             force_params_portal = true;

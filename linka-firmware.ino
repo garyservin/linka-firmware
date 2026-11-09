@@ -81,7 +81,7 @@ char recorded_template[]        = "%d-%02d-%02dT%02d:%02d:%02d.000Z";
 bool force_configuration_portal = false;
 bool force_params_portal        = false;
 
-#define REMOTE_OTA_TIMEOUT      24 * 60 * 60 * 1000 //Check every 24 hours
+#define REMOTE_OTA_TIMEOUT      (24UL * 60 * 60 * 1000) // Check every 24 hours
 uint32_t  g_remote_ota_last_run = 0;  // Timestamp when last OTA was run
 
 /*--------------------------- Function Signatures ------------------------*/
@@ -119,6 +119,11 @@ char ota_server[71] = "https://linka.servin.dev/ota";
 bool shouldSaveConfig = false;
 
 /*--------------------------- Program ------------------------------------*/
+// Copy a JSON string value into a fixed-size buffer, treating missing keys as ""
+void copyJsonString(char *dest, size_t dest_size, const char *value) {
+  strlcpy(dest, value ? value : "", dest_size);
+}
+
 void configModeCallback(WiFiConnect *mWiFiConnect) {
 }
 
@@ -299,7 +304,7 @@ void reportToHttp()
   char recorded[27];
   char source[10];
 
-  sprintf(recorded,
+  snprintf(recorded, sizeof(recorded),
           recorded_template,
           timeinfo->tm_year + 1900,
           timeinfo->tm_mon + 1,
@@ -307,8 +312,8 @@ void reportToHttp()
           timeinfo->tm_hour,
           timeinfo->tm_min,
           timeinfo->tm_sec);
-  sprintf(source, "%x", g_device_id);
-  sprintf(measurements,
+  snprintf(source, sizeof(source), "%x", g_device_id);
+  int len = snprintf(measurements, sizeof(measurements),
           http_data_template,
           sensor,
           source,
@@ -320,6 +325,10 @@ void reportToHttp()
           longitude,
           latitude,
           recorded);
+  if (len < 0 || (size_t)len >= sizeof(measurements)) {
+    Serial.println("[HTTP] Measurement payload too large, not sending");
+    return;
+  }
   Serial.println(measurements);
 
   if (http.begin(client, api_url)) {
@@ -339,7 +348,7 @@ void reportToHttp()
     http.end();
   }
   else {
-    Serial.printf("[HTTP] Unable to connect");
+    Serial.println("[HTTP] Unable to connect");
   }
 }
 
@@ -420,7 +429,7 @@ void initOta()
     Serial.println("\nEnd");
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+    Serial.printf("Progress: %u%%\r", total ? (unsigned int)((uint64_t)progress * 100 / total) : 0);
   });
   ArduinoOTA.onError([](ota_error_t error) {
     Serial.printf("Error[%u]: ", error);
@@ -473,21 +482,21 @@ void initWifi()
   wc.setAPModeTimeoutMins(1);
 
   // Set Access Point name for captive portal mode
-  char ap_name[13];
-  sprintf(ap_name, "linka-%x", g_device_id);
+  char ap_name[16];
+  snprintf(ap_name, sizeof(ap_name), "linka-%x", g_device_id);
   wc.setAPName(ap_name);
 
   // Set correct hostname
   WiFi.hostname(ap_name);
 
   // Configure custom parameters
-  WiFiConnectParam api_key_param("api_key", "API Key", api_key, 33);
-  WiFiConnectParam latitude_param("latitude", "Latitude", latitude, 13);
-  WiFiConnectParam longitude_param("longitude", "Longitude", longitude, 13);
-  WiFiConnectParam sensor_param("sensor", "Sensor model", sensor, 8);
-  WiFiConnectParam description_param("description", "Description", description, 21);
-  WiFiConnectParam api_url_param("api_url", "URL for the backend", api_url, 71);
-  WiFiConnectParam ota_server_param("ota_server", "Server for OTA upgrades", ota_server, 71);
+  WiFiConnectParam api_key_param("api_key", "API Key", api_key, sizeof(api_key));
+  WiFiConnectParam latitude_param("latitude", "Latitude", latitude, sizeof(latitude));
+  WiFiConnectParam longitude_param("longitude", "Longitude", longitude, sizeof(longitude));
+  WiFiConnectParam sensor_param("sensor", "Sensor model", sensor, sizeof(sensor));
+  WiFiConnectParam description_param("description", "Description", description, sizeof(description));
+  WiFiConnectParam api_url_param("api_url", "URL for the backend", api_url, sizeof(api_url));
+  WiFiConnectParam ota_server_param("ota_server", "Server for OTA upgrades", ota_server, sizeof(ota_server));
   wc.addParameter(&api_key_param);
   wc.addParameter(&latitude_param);
   wc.addParameter(&longitude_param);
@@ -542,13 +551,13 @@ void initWifi()
     Serial.println();
 
     // Copy parameters to variables
-    strcpy(api_key, json["api_key"]);
-    strcpy(latitude, json["latitude"]);
-    strcpy(longitude, json["longitude"]);
-    strcpy(sensor, json["sensor"]);
-    strcpy(description, json["description"]);
-    strcpy(api_url, json["api_url"]);
-    strcpy(ota_server, json["ota_server"]);
+    copyJsonString(api_key, sizeof(api_key), json["api_key"]);
+    copyJsonString(latitude, sizeof(latitude), json["latitude"]);
+    copyJsonString(longitude, sizeof(longitude), json["longitude"]);
+    copyJsonString(sensor, sizeof(sensor), json["sensor"]);
+    copyJsonString(description, sizeof(description), json["description"]);
+    copyJsonString(api_url, sizeof(api_url), json["api_url"]);
+    copyJsonString(ota_server, sizeof(ota_server), json["ota_server"]);
   }
 }
 
@@ -570,25 +579,26 @@ void initFS(void)
         Serial.println("\tOpened config file");
         size_t size = configFile.size();
         // Allocate a buffer to store contents of the file.
-        std::unique_ptr<char[]> buf(new char[size]);
+        std::unique_ptr<char[]> buf(new char[size + 1]);
 
-        configFile.readBytes(buf.get(), size);
+        size_t bytes_read = configFile.readBytes(buf.get(), size);
+        buf[bytes_read] = '\0';
         DynamicJsonBuffer jsonBuffer;
         JsonObject& json = jsonBuffer.parseObject(buf.get());
         if (json.success()) {
 
-          strcpy(api_key, json["api_key"]);
-          strcpy(latitude, json["latitude"]);
-          strcpy(longitude, json["longitude"]);
-          strcpy(sensor, json["sensor"]);
+          copyJsonString(api_key, sizeof(api_key), json["api_key"]);
+          copyJsonString(latitude, sizeof(latitude), json["latitude"]);
+          copyJsonString(longitude, sizeof(longitude), json["longitude"]);
+          copyJsonString(sensor, sizeof(sensor), json["sensor"]);
           if (json.containsKey("description")) {
-            strcpy(description, json["description"]);
+            copyJsonString(description, sizeof(description), json["description"]);
           }
           if (json.containsKey("api_url")) {
-            strcpy(api_url, json["api_url"]);
+            copyJsonString(api_url, sizeof(api_url), json["api_url"]);
           }
           if (json.containsKey("ota_server")) {
-            strcpy(ota_server, json["ota_server"]);
+            copyJsonString(ota_server, sizeof(ota_server), json["ota_server"]);
           }
           if (strcmp(api_key, "") == 0) {
             Serial.println("\tStored parameters are empty, reset the parameters");

@@ -300,7 +300,7 @@ void updatePmsReadings() {
 */
 void reportToHttp()
 {
-  char measurements[256];
+  char measurements[320];
   char recorded[27];
   char source[10];
 

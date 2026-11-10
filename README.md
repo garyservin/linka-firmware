@@ -76,3 +76,19 @@ and click on **Ok**
 
 ## Enjoy!
 
+
+## Releasing
+The git tag is the version: there is no version to bump in the code. `version.py` sets
+`VERSION` at build time (development builds report e.g. `0.3.2-4-gabc1234`).
+
+To release the current `master`:
+```
+gh release list --limit 1        # latest release
+gh release create vX.Y.Z --target master --generate-notes
+```
+Add `--prerelease` (or use a tag like `v1.0.0-rc.1`) for a pre-release. Pushing a tag
+with git (`git tag vX.Y.Z && git push origin vX.Y.Z`) works too.
+
+CI builds the firmware, publishes a GitHub release with `linka-firmware-vX.Y.Z.bin`, and
+deploys it to the [OTA server](https://github.com/garyservin/linka-ota-server), which
+offers it to every sensor (pre-releases are uploaded but not offered).

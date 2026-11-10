@@ -1,14 +1,25 @@
 name: Build Linka Firmware
 
+# Pull requests / push to master: build a development firmware (version from `git describe`).
+# Tag vX.Y.Z:  build with VERSION = X.Y.Z, attach linka-firmware-vX.Y.Z.bin (+ .md5) to the
+#              GitHub release (created if the tag was pushed without one), and trigger the
+#              "Deploy firmware" workflow in garyservin/linka-ota-server. Pre-releases are
+#              deployed but not made `latest`.
+#
+# The git tag is the version: there is no version to bump in the code. To release:
+#   gh release list --limit 1        # latest release
+#   gh release create vX.Y.Z --target master --generate-notes [--prerelease]
 on:
   push:
     branches: ["master"]
+    tags: ["v*"]
   pull_request:
     branches: ["master"]
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
+  # Never cancel a release run half-way through a deploy
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -17,9 +28,33 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history and tags: for `git describe` and the release checks
+          fetch-depth: 0
+
+      - name: Determine release version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" != refs/tags/* ]]; then
+            echo "Development build: $(git describe --tags --match 'v[0-9]*' --match '[0-9]*' 2>/dev/null || echo no tags)"
+            exit 0
+          fi
+          tag="$GITHUB_REF_NAME"
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag $tag is not a version tag like v1.2.3 or v1.2.3-rc.1"; exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::Tag $tag points to a commit that is not on master"; exit 1
+          fi
+          echo "Releasing version ${tag#v}"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          # Read by version.py
+          echo "LINKA_VERSION=${tag#v}" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v7
         with:
@@ -48,3 +83,64 @@ jobs:
           name: firmware
           path: .pio/build/linka/firmware.bin
           if-no-files-found: error
+
+  release:
+    needs: build
+    if: needs.build.outputs.version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      prerelease: ${{ steps.publish.outputs.prerelease }}
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      BIN: linka-firmware-v${{ needs.build.outputs.version }}.bin
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: firmware
+
+      - name: Publish GitHub release
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          mv firmware.bin "$BIN"
+          md5sum "$BIN" > "$BIN.md5"
+          cat "$BIN.md5"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # `gh release create` (the usual way): attach the firmware to that release,
+            # and respect its pre-release flag
+            gh release upload "$TAG" "$BIN" "$BIN.md5" --clobber
+            prerelease=$(gh release view "$TAG" --json isPrerelease -q .isPrerelease)
+          else
+            # Tag pushed with git: create the release
+            prerelease=false
+            [[ "$VERSION" == *-* ]] && prerelease=true
+            gh release create "$TAG" "$BIN" "$BIN.md5" --verify-tag --generate-notes \
+              --title "$TAG" $([ "$prerelease" = true ] && echo --prerelease)
+          fi
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: [build, release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger OTA server deploy
+        env:
+          # Fine-grained PAT with "Actions: read and write" on garyservin/linka-ota-server
+          GH_TOKEN: ${{ secrets.OTA_SERVER_DISPATCH_TOKEN }}
+          VERSION: ${{ needs.build.outputs.version }}
+          PRERELEASE: ${{ needs.release.outputs.prerelease }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::OTA_SERVER_DISPATCH_TOKEN is not set, skipping OTA deploy"; exit 0
+          fi
+          set_latest=true
+          [ "$PRERELEASE" = "true" ] && set_latest=false
+          gh workflow run deploy-firmware.yml -R garyservin/linka-ota-server \
+            -f version="$VERSION" -f set_latest="$set_latest"
+          echo "Triggered OTA deploy of $VERSION (set_latest=$set_latest):"
+          echo "https://github.com/garyservin/linka-ota-server/actions/workflows/deploy-firmware.yml"

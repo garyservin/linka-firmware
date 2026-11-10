@@ -2,8 +2,9 @@
 # Local OTA server for testing firmware on a real sensor, without touching production.
 #
 # Runs linka-ota-server on this machine over HTTPS (self-signed, the firmware doesn't
-# verify certificates) with its own firmware directory. Point the sensor's
-# "Server for OTA upgrades" (and "URL for the backend", to keep test reports out of
+# verify certificates) with its own firmware directory, plus a fake measurements API on
+# /api that checks and prints each report (tools/ota_test_app.py). Point the sensor's
+# "Server for OTA upgrades" and "URL for the backend" (to keep test reports out of
 # AireLibre) at the URLs printed by `serve`.
 #
 # Usage: tools/ota-test.sh <command> [args]
@@ -95,7 +96,7 @@ cmd_serve() {
   cat <<EOF
 Set these in the sensor's setup page:
   Server for OTA upgrades: https://${ip:-<this-machine-ip>}:$PORT/ota
-  URL for the backend:     https://${ip:-<this-machine-ip>}:$PORT/api   (404s, the payload is in the serial log)
+  URL for the backend:     https://${ip:-<this-machine-ip>}:$PORT/api   (reports are checked and printed here)
 
 EOF
   cmd_list
@@ -103,7 +104,7 @@ EOF
   cd "$OTA_SERVER"
   FIRMWARE_PATH=$BIN_DIR APP_VERSION=local-test exec uv run gunicorn \
     --certfile "$TEST_DIR/cert.pem" --keyfile "$TEST_DIR/key.pem" \
-    --bind "0.0.0.0:$PORT" --access-logfile - 'linka_ota_server:create_app()'
+    --bind "0.0.0.0:$PORT" --access-logfile - --pythonpath "$FIRMWARE_DIR/tools" 'ota_test_app:app'
 }
 
 cmd_add() {

@@ -2,3 +2,4 @@
 .vscode
 binaries
 bin
+__pycache__

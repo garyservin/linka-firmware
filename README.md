@@ -95,7 +95,9 @@ offers it to every sensor (pre-releases are uploaded but not offered).
 
 ## Testing on a device
 `tools/ota-test.sh` runs a local copy of the [OTA server](https://github.com/garyservin/linka-ota-server)
-(next to this repo) so a test sensor can be updated over the air without touching production:
+(next to this repo) so a test sensor can be updated over the air without touching production.
+It also accepts the sensor's reports on `/api`, and checks and prints each one (API key redacted)
+instead of sending them to AireLibre:
 ```
 tools/ota-test.sh setup          # test dir with a certificate and the latest release
 tools/ota-test.sh serve          # prints the URLs to set in the sensor's setup page

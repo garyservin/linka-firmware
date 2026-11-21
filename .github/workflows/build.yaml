@@ -3,8 +3,8 @@ name: Build Linka Firmware
 # Pull requests / push to master: build a development firmware (version from `git describe`).
 # Tag vX.Y.Z:  build with VERSION = X.Y.Z, attach linka-firmware-vX.Y.Z.bin (+ .md5) to the
 #              GitHub release (created if the tag was pushed without one), and trigger the
-#              "Deploy firmware" workflow in garyservin/linka-ota-server. Pre-releases are
-#              deployed but not made `latest`.
+#              "Deploy firmware" workflow in garyservin/linka-ota-server: releases go to
+#              the production track (/ota), pre-releases to the devel track (/ota/devel).
 #
 # The git tag is the version: there is no version to bump in the code. To release:
 #   gh release list --limit 1        # latest release
@@ -138,9 +138,9 @@ jobs:
           if [ -z "$GH_TOKEN" ]; then
             echo "::warning::OTA_SERVER_DISPATCH_TOKEN is not set, skipping OTA deploy"; exit 0
           fi
-          set_latest=true
-          [ "$PRERELEASE" = "true" ] && set_latest=false
+          track=production
+          [ "$PRERELEASE" = "true" ] && track=devel
           gh workflow run deploy-firmware.yml -R garyservin/linka-ota-server \
-            -f version="$VERSION" -f set_latest="$set_latest"
-          echo "Triggered OTA deploy of $VERSION (set_latest=$set_latest):"
+            -f version="$VERSION" -f track="$track"
+          echo "Triggered OTA deploy of $VERSION to the $track track:"
           echo "https://github.com/garyservin/linka-ota-server/actions/workflows/deploy-firmware.yml"

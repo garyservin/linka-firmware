@@ -90,8 +90,13 @@ Add `--prerelease` (or use a tag like `v1.0.0-rc.1`) for a pre-release. Pushing 
 with git (`git tag vX.Y.Z && git push origin vX.Y.Z`) works too.
 
 CI builds the firmware, publishes a GitHub release with `linka-firmware-vX.Y.Z.bin`, and
-deploys it to the [OTA server](https://github.com/garyservin/linka-ota-server), which
-offers it to every sensor (pre-releases are uploaded but not offered).
+deploys it to the [OTA server](https://github.com/garyservin/linka-ota-server):
+
+- Releases go to the **production** track, offered to every sensor using the default
+  OTA URL `https://linka.servin.dev/ota`.
+- Pre-releases go to the **devel** track, offered only to sensors whose "Server for OTA
+  upgrades" (in the setup page) is `https://linka.servin.dev/ota/devel`. Devel sensors
+  also get production releases newer than the devel version.
 
 ## Testing on a device
 `tools/ota-test.sh` runs a local copy of the [OTA server](https://github.com/garyservin/linka-ota-server)

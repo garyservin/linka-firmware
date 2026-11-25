@@ -77,6 +77,26 @@ and click on **Ok**
 ## Enjoy!
 
 
+## Setting up a sensor over USB
+After installing the firmware, the [web flasher](https://linka.servin.dev) can send the
+sensor's settings (Wi-Fi network, API key, location, ...) over the same USB cable, so
+it starts measuring without going through its Wi-Fi setup portal. It can also change
+the settings of a sensor that already runs this firmware.
+
+At boot, the sensor prints `LINKA_READY {"version":...,"device":...}` on the serial
+port (115200 baud) and listens for 2 seconds for a line like:
+```
+LINKA_CONFIG {"wifi_ssid":"...","wifi_password":"...","api_key":"...","latitude":"-25.28","longitude":"-57.63"}
+```
+Every setting is optional: only the ones sent change (`wifi_ssid`, `wifi_password`,
+`api_key`, `latitude`, `longitude`, `sensor`, `description`, `api_url`, `ota_server`).
+It answers `LINKA_CONFIG_OK` or `LINKA_CONFIG_ERROR <reason>`, and then
+`LINKA_WIFI_CONNECTED <ip>` or `LINKA_WIFI_FAILED` (and opens the setup portal, as
+before). See [`serial_config.h`](serial_config.h).
+
+Run the parsing tests on your computer (after a `pio run`) with
+`tools/test_serial_config.sh`.
+
 ## Releasing
 The git tag is the version: there is no version to bump in the code. `version.py` sets
 `VERSION` at build time (development builds report e.g. `0.3.2-4-gabc1234`).

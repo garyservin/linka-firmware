@@ -31,6 +31,7 @@
 #include <WiFiConnect.h>              // Allow configuring WiFi via captive portal
 #include "PMS.h"                      // Particulate Matter Sensor driver (embedded)
 #include "coordinates.h"              // Latitude/longitude validation
+#include "serial_config.h"            // Settings sent over USB (web flasher)
 
 /*--------------------------- Global Variables ---------------------------*/
 // Particulate matter sensor
@@ -94,6 +95,9 @@ void handleRemoteOta();
 void updatePmsReadings();
 void reportToHttp();
 void saveConfig();
+void writeConfig();
+void receiveSerialConfig();
+void applySerialConfig(char *json_text);
 
 /*--------------------------- Instantiate Global Objects -----------------*/
 // Software serial port
@@ -185,6 +189,7 @@ void update_error(int err) {
 */
 void setup()
 {
+  Serial.setRxBufferSize(SERIAL_CONFIG_MAX_LINE);  // Fit a whole LINKA_CONFIG line
   Serial.begin(SERIAL_BAUD_RATE);   // GPIO1, GPIO3 (TX/RX pin on ESP-12E Development Board)
   delay(100);
   Serial.println();
@@ -210,6 +215,9 @@ void setup()
 
   // Initialize File System
   initFS();
+
+  // Accept settings over USB (from the web flasher) before WiFi needs them
+  receiveSerialConfig();
 
   // Initialize WiFi
   initWifi();
@@ -546,6 +554,7 @@ void initWifi()
 
   // Check if we need to start captive portal
   if (!wc.autoConnect()) {
+      Serial.println("LINKA_WIFI_FAILED");
       Serial.println("\tUnable to connect to wifi, starting Configuration portal and checking periodically for wifi");
       // When updating to newer SDK, need to make sure we can store the wifi configuration
       // https://github.com/esp8266/Arduino/pull/7902
@@ -553,6 +562,8 @@ void initWifi()
       wc.startConfigurationPortal(AP_RESET); // if not connected show the configuration portal
       WiFi.persistent(false);
   } else {
+    // Before any params portal below, which can wait for a long time
+    Serial.printf("LINKA_WIFI_CONNECTED %s\n", WiFi.localIP().toString().c_str());
     if (force_params_portal) {
       Serial.println("\tConfig params not found, start Params Portal");
       wc.startParamsPortal(AP_WAIT); //if not connected show the configuration portal
@@ -594,6 +605,14 @@ void saveConfig()
   strlcpy(description, description_param.getValue(), sizeof(description));
   strlcpy(api_url, api_url_param.getValue(), sizeof(api_url));
   strlcpy(ota_server, ota_server_param.getValue(), sizeof(ota_server));
+  writeConfig();
+}
+
+/*
+  Write the current parameters to the filesystem
+*/
+void writeConfig()
+{
   validateCoordinates();
 
   DynamicJsonBuffer jsonBuffer;
@@ -617,6 +636,96 @@ void saveConfig()
   Serial.print('\t');
   json.printTo(Serial);
   Serial.println();
+}
+
+/*
+  Listen briefly at boot for settings sent over USB (see serial_config.h)
+*/
+void receiveSerialConfig()
+{
+  Serial.printf("\n" SERIAL_CONFIG_READY " {\"version\":\"%s\",\"device\":\"linka-%x\"}\n",
+                VERSION, g_device_id);
+
+  static char line[SERIAL_CONFIG_MAX_LINE + 1];
+  size_t len = 0;
+  bool too_long = false;
+  uint32_t start = millis();
+  uint32_t window = SERIAL_CONFIG_WINDOW_MS;
+
+  while (millis() - start < window) {
+    while (Serial.available()) {
+      char c = Serial.read();
+      // Keep listening while a line is arriving, up to 10s in total
+      uint32_t elapsed = millis() - start;
+      if (elapsed + 1000 > window) window = elapsed + 1000;
+      if (window > 10000) window = 10000;
+      if (c == '\r') continue;
+      if (c != '\n') {
+        if (len < SERIAL_CONFIG_MAX_LINE) line[len++] = c;
+        else too_long = true;
+        continue;
+      }
+      line[len] = '\0';
+      bool is_config = strncmp(line, SERIAL_CONFIG_PREFIX, strlen(SERIAL_CONFIG_PREFIX)) == 0;
+      len = 0;
+      if (!is_config) {
+        too_long = false;
+        continue;  // e.g. noise when the port opens
+      }
+      if (too_long) {
+        Serial.println("LINKA_CONFIG_ERROR settings are too long");
+        return;
+      }
+      applySerialConfig(line + strlen(SERIAL_CONFIG_PREFIX));
+      return;
+    }
+    delay(5);
+  }
+}
+
+/*
+  Validate and store settings received over USB
+*/
+void applySerialConfig(char *json_text)
+{
+  static UsbSettings config;
+  char error[64];
+  if (!parseSerialConfig(json_text, config, error, sizeof(error))) {
+    Serial.printf("LINKA_CONFIG_ERROR %s\n", error);
+    return;
+  }
+
+  Serial.println("Received settings over USB");
+  if (config.has_api_key) strlcpy(api_key, config.api_key, sizeof(api_key));
+  if (config.has_latitude) strlcpy(latitude, config.latitude, sizeof(latitude));
+  if (config.has_longitude) strlcpy(longitude, config.longitude, sizeof(longitude));
+  if (config.has_sensor) strlcpy(sensor, config.sensor, sizeof(sensor));
+  if (config.has_description) strlcpy(description, config.description, sizeof(description));
+  if (config.has_api_url) strlcpy(api_url, config.api_url, sizeof(api_url));
+  if (config.has_ota_server) strlcpy(ota_server, config.ota_server, sizeof(ota_server));
+
+  if (config.has_api_key || config.has_latitude || config.has_longitude ||
+      config.has_sensor || config.has_description || config.has_api_url ||
+      config.has_ota_server) {
+    writeConfig();
+    if (strcmp(api_key, "") != 0) {
+      force_params_portal = false;  // No need to ask for the parameters anymore
+    }
+  }
+
+  if (config.has_wifi_ssid) {
+    Serial.print("\tWiFi network: ");
+    Serial.println(config.wifi_ssid);
+    // Store the credentials like the setup portal does, for autoConnect() to use
+    WiFi.persistent(true);
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(config.wifi_ssid, config.wifi_password);
+    WiFi.persistent(false);
+  }
+
+  // The password stays in the WiFi settings only
+  memset(&config, 0, sizeof(config));
+  Serial.println("LINKA_CONFIG_OK");
 }
 
 /*

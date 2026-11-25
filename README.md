@@ -89,6 +89,14 @@ gh release create vX.Y.Z --target master --generate-notes
 Add `--prerelease` (or use a tag like `v1.0.0-rc.1`) for a pre-release. Pushing a tag
 with git (`git tag vX.Y.Z && git push origin vX.Y.Z`) works too.
 
+Releases must be on `master`, but pre-releases may come from any branch, e.g. to try a
+pull request on devel sensors before merging it:
+```
+gh release create vX.Y.Z-rc.N --target <branch> --generate-notes --prerelease
+```
+The version needs a pre-release suffix (`-rc.N`) and the release must be marked as a
+pre-release, so it only goes to the devel track. Use a new rc number for each build.
+
 CI builds the firmware, publishes a GitHub release with `linka-firmware-vX.Y.Z.bin`, and
 deploys it to the [OTA server](https://github.com/garyservin/linka-ota-server):
 

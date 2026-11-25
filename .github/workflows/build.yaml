@@ -9,6 +9,9 @@ name: Build Linka Firmware
 # The git tag is the version: there is no version to bump in the code. To release:
 #   gh release list --limit 1        # latest release
 #   gh release create vX.Y.Z --target master --generate-notes [--prerelease]
+# Releases must be on master. Pre-releases may come from any branch, e.g. to test a pull
+# request on devel sensors:
+#   gh release create vX.Y.Z-rc.N --target <branch> --generate-notes --prerelease
 on:
   push:
     branches: ["master"]
@@ -30,6 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      on_master: ${{ steps.version.outputs.on_master }}
 
     steps:
       - uses: actions/checkout@v7
@@ -48,11 +52,15 @@ jobs:
           if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::Tag $tag is not a version tag like v1.2.3 or v1.2.3-rc.1"; exit 1
           fi
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
-            echo "::error::Tag $tag points to a commit that is not on master"; exit 1
+          on_master=true
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/master || on_master=false
+          if [ "$on_master" = false ] && [[ "$tag" != *-* ]]; then
+            echo "::error::Tag $tag points to a commit that is not on master. Only pre-release versions (like v1.2.3-rc.1) may come from other branches"
+            exit 1
           fi
-          echo "Releasing version ${tag#v}"
+          echo "Releasing version ${tag#v}$([ "$on_master" = false ] && echo ' (not on master: pre-release only)')"
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "on_master=$on_master" >> "$GITHUB_OUTPUT"
           # Read by version.py
           echo "LINKA_VERSION=${tag#v}" >> "$GITHUB_ENV"
 
@@ -106,19 +114,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
+          ON_MASTER: ${{ needs.build.outputs.on_master }}
         run: |
           mv firmware.bin "$BIN"
           md5sum "$BIN" > "$BIN.md5"
           cat "$BIN.md5"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            # `gh release create` (the usual way): attach the firmware to that release,
-            # and respect its pre-release flag
-            gh release upload "$TAG" "$BIN" "$BIN.md5" --clobber
+            # `gh release create` (the usual way): respect its pre-release flag
+            exists=true
             prerelease=$(gh release view "$TAG" --json isPrerelease -q .isPrerelease)
           else
             # Tag pushed with git: create the release
+            exists=false
             prerelease=false
             [[ "$VERSION" == *-* ]] && prerelease=true
+          fi
+          # Code from outside master never reaches the production track
+          if [ "$ON_MASTER" != true ] && [ "$prerelease" != true ]; then
+            echo "::error::$TAG is not on master, so it can only be a pre-release: mark the release as a pre-release and re-run this job"
+            exit 1
+          fi
+          if [ "$exists" = true ]; then
+            gh release upload "$TAG" "$BIN" "$BIN.md5" --clobber
+          else
             gh release create "$TAG" "$BIN" "$BIN.md5" --verify-tag --generate-notes \
               --title "$TAG" $([ "$prerelease" = true ] && echo --prerelease)
           fi

@@ -121,6 +121,7 @@ char longitude[12] = "";
 char description[21] = "";
 char api_url[71] = "https://api.airelib.re/api/v1/measurements";
 char ota_server[71] = "https://linka.servin.dev/ota";
+char ota_password[33] = "";  // For uploads over the local network (ArduinoOTA), empty: none
 
 // flag for saving data
 bool shouldSaveConfig = false;
@@ -138,6 +139,7 @@ WiFiConnectParam sensor_param("sensor", "Sensor model", "", sizeof(sensor));
 WiFiConnectParam description_param("description", "Description", "", sizeof(description));
 WiFiConnectParam api_url_param("api_url", "URL for the backend", "", sizeof(api_url));
 WiFiConnectParam ota_server_param("ota_server", "Server for OTA upgrades", "", sizeof(ota_server));
+WiFiConnectParam ota_password_param("ota_password", "Password for uploads over the local network (empty: none)", "", sizeof(ota_password));
 
 /*--------------------------- Program ------------------------------------*/
 // Copy a JSON string value into a fixed-size buffer, treating missing keys as ""
@@ -492,6 +494,14 @@ void initOta()
       Serial.println("End Failed");
     }
   });
+  // Only takes effect here: ArduinoOTA ignores password changes after begin(), so a
+  // new one set from the portal opened when WiFi is lost applies after a restart
+  if (ota_password[0] != '\0') {
+    ArduinoOTA.setPassword(ota_password);
+    Serial.println("\tLocal OTA uploads need the password");
+  } else {
+    Serial.println("\tLocal OTA uploads don't need a password (none set)");
+  }
   ArduinoOTA.begin();
 
   // Initialize remote OTA
@@ -544,6 +554,7 @@ void initWifi()
   description_param.setValue(description);
   api_url_param.setValue(api_url);
   ota_server_param.setValue(ota_server);
+  ota_password_param.setValue(ota_password);
   wc.addParameter(&api_key_param);
   wc.addParameter(&latitude_param);
   wc.addParameter(&longitude_param);
@@ -551,6 +562,7 @@ void initWifi()
   wc.addParameter(&description_param);
   wc.addParameter(&api_url_param);
   wc.addParameter(&ota_server_param);
+  wc.addParameter(&ota_password_param);
 
   // Check if we need to start captive portal
   if (!wc.autoConnect()) {
@@ -605,6 +617,7 @@ void saveConfig()
   strlcpy(description, description_param.getValue(), sizeof(description));
   strlcpy(api_url, api_url_param.getValue(), sizeof(api_url));
   strlcpy(ota_server, ota_server_param.getValue(), sizeof(ota_server));
+  strlcpy(ota_password, ota_password_param.getValue(), sizeof(ota_password));
   writeConfig();
 }
 
@@ -624,6 +637,7 @@ void writeConfig()
   json["description"] = description;
   json["api_url"] = api_url;
   json["ota_server"] = ota_server;
+  json["ota_password"] = ota_password;
 
   File configFile = LittleFS.open("/config.json", "w");
   if (!configFile) {
@@ -632,6 +646,9 @@ void writeConfig()
     json.printTo(configFile);
     configFile.close();
   }
+
+  // Don't show the password in the log
+  if (ota_password[0] != '\0') json["ota_password"] = "********";
 
   Serial.print('\t');
   json.printTo(Serial);
@@ -703,10 +720,11 @@ void applySerialConfig(char *json_text)
   if (config.has_description) strlcpy(description, config.description, sizeof(description));
   if (config.has_api_url) strlcpy(api_url, config.api_url, sizeof(api_url));
   if (config.has_ota_server) strlcpy(ota_server, config.ota_server, sizeof(ota_server));
+  if (config.has_ota_password) strlcpy(ota_password, config.ota_password, sizeof(ota_password));
 
   if (config.has_api_key || config.has_latitude || config.has_longitude ||
       config.has_sensor || config.has_description || config.has_api_url ||
-      config.has_ota_server) {
+      config.has_ota_server || config.has_ota_password) {
     writeConfig();
     if (strcmp(api_key, "") != 0) {
       force_params_portal = false;  // No need to ask for the parameters anymore
@@ -767,6 +785,9 @@ void initFS(void)
           if (json.containsKey("ota_server")) {
             copyJsonString(ota_server, sizeof(ota_server), json["ota_server"]);
           }
+          if (json.containsKey("ota_password")) {
+            copyJsonString(ota_password, sizeof(ota_password), json["ota_password"]);
+          }
           validateCoordinates();
           if (strcmp(api_key, "") == 0) {
             Serial.println("\tStored parameters are empty, reset the parameters");
@@ -788,6 +809,8 @@ void initFS(void)
             Serial.println(description);
             Serial.print("\t\tRemote OTA Server: ");
             Serial.println(ota_server);
+            Serial.print("\t\tLocal OTA password: ");
+            Serial.println(ota_password[0] != '\0' ? "set" : "none");
           }
         } else {
           Serial.println("\tFailed to load json config");

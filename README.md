@@ -36,7 +36,17 @@ upload_protocol = espota
 upload_port = <IP_ADDRESS_OF_YOUR_SENSOR>
 ````
 
-and upload just like the previous method.
+and upload just like the previous method. Your computer must be on the sensor's network.
+
+If the sensor has a "Password for uploads over the local network" (in its setup page, or
+`ota_password` over USB), add it too:
+
+```bash
+upload_flags = --auth=<PASSWORD>
+````
+
+Without a password, anyone on the sensor's network can upload firmware to it. A new
+password applies when the sensor restarts.
 
 ### Arduino IDE
 
@@ -89,7 +99,8 @@ port (115200 baud) and listens for 2 seconds for a line like:
 LINKA_CONFIG {"wifi_ssid":"...","wifi_password":"...","api_key":"...","latitude":"-25.28","longitude":"-57.63"}
 ```
 Every setting is optional: only the ones sent change (`wifi_ssid`, `wifi_password`,
-`api_key`, `latitude`, `longitude`, `sensor`, `description`, `api_url`, `ota_server`).
+`api_key`, `latitude`, `longitude`, `sensor`, `description`, `api_url`, `ota_server`,
+`ota_password`).
 It answers `LINKA_CONFIG_OK` or `LINKA_CONFIG_ERROR <reason>`, and then
 `LINKA_WIFI_CONNECTED <ip>` or `LINKA_WIFI_FAILED` (and opens the setup portal, as
 before). See [`serial_config.h`](serial_config.h).

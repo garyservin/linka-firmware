@@ -41,7 +41,8 @@ static void testAllSettings() {
               "\"latitude\":\" -25,2846789 \",\"longitude\":\"-57.6359\","
               "\"sensor\":\"PMS5003\",\"description\":\"Balcony\","
               "\"api_url\":\"https://api.example.com/m\","
-              "\"ota_server\":\"https://linka.servin.dev/ota/devel\"}",
+              "\"ota_server\":\"https://linka.servin.dev/ota/devel\","
+              "\"ota_password\":\"local secret\"}",
               s, error));
   CHECK(strcmp(s.wifi_ssid, "Casa Gómez") == 0);
   CHECK(strcmp(s.wifi_password, "secret pass") == 0);
@@ -52,9 +53,10 @@ static void testAllSettings() {
   CHECK(strcmp(s.description, "Balcony") == 0);
   CHECK(strcmp(s.api_url, "https://api.example.com/m") == 0);
   CHECK(strcmp(s.ota_server, "https://linka.servin.dev/ota/devel") == 0);
+  CHECK(strcmp(s.ota_password, "local secret") == 0);
   CHECK(s.has_wifi_ssid && s.has_wifi_password && s.has_api_key && s.has_latitude &&
         s.has_longitude && s.has_sensor && s.has_description && s.has_api_url &&
-        s.has_ota_server);
+        s.has_ota_server && s.has_ota_password);
 }
 
 static void testOnlySomeSettings() {
@@ -71,6 +73,10 @@ static void testOnlySomeSettings() {
   // Description may be cleared
   CHECK(parse("{\"description\":\"\"}", s, error));
   CHECK(s.has_description && s.description[0] == '\0');
+
+  // So may the OTA password (no password)
+  CHECK(parse("{\"ota_password\":\"\"}", s, error));
+  CHECK(s.has_ota_password && s.ota_password[0] == '\0');
 }
 
 static void testLimits() {
@@ -88,6 +94,7 @@ static void testLimits() {
   expectError("{\"description\":\"123456789012345678901\"}", "description is too long");
   expectError("{\"api_key\":\"0123456789abcdef0123456789abcdef0\"}", "api_key is too long");
   expectError("{\"sensor\":\"PMS70031\"}", "sensor is too long");
+  expectError("{\"ota_password\":\"123456789012345678901234567890123\"}", "ota_password is too long");
 }
 
 static void testInvalid() {

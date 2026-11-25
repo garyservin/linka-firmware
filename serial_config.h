@@ -9,7 +9,8 @@
               Printed at boot. The sensor then listens for SERIAL_CONFIG_WINDOW_MS.
     page   -> LINKA_CONFIG {"wifi_ssid":"...","wifi_password":"...","api_key":"...",
                             "latitude":"-25.28","longitude":"-57.63","sensor":"PMS7003",
-                            "description":"...","api_url":"...","ota_server":"..."}
+                            "description":"...","api_url":"...","ota_server":"...",
+                            "ota_password":"..."}
               Every field is optional: only the ones sent are changed.
     sensor -> LINKA_CONFIG_OK
               or LINKA_CONFIG_ERROR <reason> (nothing is changed)
@@ -41,9 +42,10 @@ struct UsbSettings {
   char description[21];
   char api_url[71];
   char ota_server[71];
+  char ota_password[33];    // For uploads over the local network, "" removes it
 
   bool has_wifi_ssid, has_wifi_password, has_api_key, has_latitude, has_longitude,
-       has_sensor, has_description, has_api_url, has_ota_server;
+       has_sensor, has_description, has_api_url, has_ota_server, has_ota_password;
 };
 
 // Copies json[key] into dest if present. Fails if it isn't a string, is too long,
@@ -83,7 +85,7 @@ static bool parseSerialConfig(char *json_text, UsbSettings &config,
 {
   static const char *const known_keys[] = {
     "wifi_ssid", "wifi_password", "api_key", "latitude", "longitude", "sensor",
-    "description", "api_url", "ota_server",
+    "description", "api_url", "ota_server", "ota_password",
   };
 
   memset(&config, 0, sizeof(config));
@@ -116,7 +118,8 @@ static bool parseSerialConfig(char *json_text, UsbSettings &config,
       !serialConfigString(json, "sensor", config.sensor, sizeof(config.sensor), true, config.has_sensor, error, error_size) ||
       !serialConfigString(json, "description", config.description, sizeof(config.description), false, config.has_description, error, error_size) ||
       !serialConfigString(json, "api_url", config.api_url, sizeof(config.api_url), true, config.has_api_url, error, error_size) ||
-      !serialConfigString(json, "ota_server", config.ota_server, sizeof(config.ota_server), true, config.has_ota_server, error, error_size)) {
+      !serialConfigString(json, "ota_server", config.ota_server, sizeof(config.ota_server), true, config.has_ota_server, error, error_size) ||
+      !serialConfigString(json, "ota_password", config.ota_password, sizeof(config.ota_password), false, config.has_ota_password, error, error_size)) {
     return false;
   }
 
